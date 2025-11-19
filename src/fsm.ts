@@ -27,7 +27,10 @@ export type EventDefObj<
 	TContext
 > = {
 	target: TState | TStateTargetFn<TState, TEvent, TContext>;
-	isAllowed?: (payload: any, meta: TransitionMeta<TState, TContext>) => boolean;
+	canTransition?: (
+		payload: any,
+		meta: TransitionMeta<TState, TContext>
+	) => boolean;
 	effect?: (payload: any, meta: TransitionMeta<TState, TContext>) => void;
 };
 
@@ -169,14 +172,18 @@ export function createFsm<
 
 		// default fallbacks
 		let target: TState | TStateTargetFn<TState, TEvent, TContext>;
-		let isAllowed: EventDefObj<TState, TEvent, TContext>["isAllowed"] = () =>
-			true;
+		let canTransition: EventDefObj<
+			TState,
+			TEvent,
+			TContext
+		>["canTransition"] = () => true;
 		let effect: EventDefObj<TState, TEvent, TContext>["effect"] = () => {};
 
 		//
 		if (typeof def === "object") {
 			target = def.target;
-			if (typeof def.isAllowed === "function") isAllowed = def.isAllowed;
+			if (typeof def.canTransition === "function")
+				canTransition = def.canTransition;
 			if (typeof def.effect === "function") effect = def.effect;
 		} else {
 			target = def as TState;
@@ -187,13 +194,13 @@ export function createFsm<
 			throw new TypeError(`Empty target for "${String(event)}"`);
 		}
 
-		// 1. check the isAllowed guard
-		if (typeof isAllowed === "function") {
+		// 1. check the canTransition guard
+		if (typeof canTransition === "function") {
 			let allowed = false;
 			try {
-				allowed = isAllowed(payload, createMeta());
+				allowed = canTransition(payload, createMeta());
 			} catch (e) {
-				logger?.error?.(`Error in isAllowed for "${String(event)}": ${e}`);
+				logger?.error?.(`Error in canTransition for "${String(event)}": ${e}`);
 				allowed = false;
 			}
 
@@ -239,8 +246,7 @@ export function createFsm<
 			throw new Error(msg);
 		}
 
-		// continue only if we have a change... if we were calling send recursively with
-		// same output, we validly might not have a change...
+		// if we were calling send recursively with same output, we validly might not have a change...
 		if (current !== nextState) {
 			// 4. update state
 			previous = current;
@@ -281,7 +287,7 @@ export function createFsm<
 		getCurrent: () => getState().current,
 		//
 		is: (stateName: TState): boolean => current === stateName,
-		// NOTE: this does not check isAllowed guards
+		// NOTE: this does not check the `canTransition` guards
 		can(eventName: EventName<FsmConfig<TState, TEvent, TContext>>) {
 			return (
 				!!config[current]?.[eventName] || !!config["*" as TState]?.[eventName]

@@ -4,21 +4,21 @@ Lightweight, typed, framework-agnostic Finite State Machine.
 
 ## Terminology
 
-**State** - a string label defining a state the FSM is currently in. 
+**State** - A string label representing the FSM's current state.
 
-Note: There is a special wildcard state notation "*" supported which is NOT considered as a true state label, it just acts as a shortcut.
+Note: The wildcard notation "*" is supported as a DRY shortcut for transition definitions but is not considered a true state label.
 
-**Event** - a string label which is _sent_ to FSM to trigger state change. 
+**Event** - A string label sent to the FSM to trigger a state transition.
 
-**Transition** - internal sync lifecycle period after receiving an state change event, but before the actual change happens. Time when "Guards" and "Actions" are executed.
+**Transition** - The synchronous lifecycle phase that occurs after receiving an event and before the state actually changes. During this phase, guards are evaluated and effects are executed.
 
-**Guard** - optional function which checks whether to allow the state change based on the context evaluation (or any other condition check).
+**Guard** (a.k.a `canTransition`) - An optional function that determines whether a transition should proceed, based on context evaluation or other conditions. Returns a boolean.
 
-**Action** - a pre/post side effect "fire-and-forget" functions executed during transitions.
+**Effect** - Side-effect function executed during transitions in a "fire-and-forget" manner. Run before the state change (after the guard).
 
-**Context** - custom arbitrary read/write object visible to FSM during the whole lifetime.
+**Context** - A custom object accessible throughout the FSM's lifetime, containing arbitrary data that can be read and modified.
 
-"Entry/Exit" - optional lifecycle methods executed on state change
+**Entry/Exit** - Optional lifecycle hooks executed when entering or exiting a state during a transition. During this phase the FSM can trigger another transition (by sending an event).
 
 
 

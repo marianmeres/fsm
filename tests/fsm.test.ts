@@ -72,7 +72,7 @@ Deno.test("basic flow, simple notation", () => {
 });
 
 //
-Deno.test.only("basic flow, entry, exit, full notation", () => {
+Deno.test("basic flow, entry, exit, full notation", () => {
 	let log: any[] = [];
 	const context = { counter: 0 };
 
@@ -81,16 +81,16 @@ Deno.test.only("basic flow, entry, exit, full notation", () => {
 		{
 			ON: {
 				stop: (_payload, _meta) => "OFF",
-				_exit: (_payload, meta) => {
-					log.push(["ON._exit", omit(meta, ["send"])]);
+				_exit: (_payload, metaWithSend) => {
+					log.push(["ON._exit", omit(metaWithSend, ["send"])]);
 				},
 			},
 			OFF: {
 				start: {
 					target: "ON",
 					// allow two start only 2 times
-					isAllowed: (_payload, meta) => {
-						log.push(["isAllowed", meta]);
+					canTransition: (_payload, meta) => {
+						log.push(["canTransition", meta]);
 						return meta.context!.counter < 2;
 					},
 					effect: (_payload, meta) => {
@@ -98,8 +98,8 @@ Deno.test.only("basic flow, entry, exit, full notation", () => {
 						log.push(["effect", meta]);
 					},
 				},
-				_entry: (_payload, meta) => {
-					log.push(["OFF._entry", omit(meta, ["send"])]);
+				_entry: (_payload, metaWithSend) => {
+					log.push(["OFF._entry", omit(metaWithSend, ["send"])]);
 				},
 			},
 			"*": {
@@ -109,8 +109,8 @@ Deno.test.only("basic flow, entry, exit, full notation", () => {
 						return state.current === "ON" ? send("stop") : send("start");
 					},
 				},
-				_entry: (_payload, meta) => {
-					log.push(["*._entry", omit(meta, ["send"])]);
+				_entry: (_payload, metaWithSend) => {
+					log.push(["*._entry", omit(metaWithSend, ["send"])]);
 				},
 			},
 		},
@@ -131,7 +131,7 @@ Deno.test.only("basic flow, entry, exit, full notation", () => {
 		// OLD
 		// start guard (note depth 2, because toggle +1 and start +1)
 		[
-			"isAllowed",
+			"canTransition",
 			{
 				state: { current: "OFF", previous: null },
 				context: { counter: 1 },
