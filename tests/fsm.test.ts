@@ -21,8 +21,8 @@ Deno.test("basic flow, simple notation", () => {
 			// will be available for every state
 			"*": {
 				toggle: (payload, meta) => {
-					// console.log(111, payload, meta);
-					return meta.state.current === "ON" ? "OFF" : "ON";
+					const { state, trigger } = meta;
+					return state.current === "ON" ? trigger("stop") : trigger("start");
 				},
 			},
 		},
@@ -45,13 +45,13 @@ Deno.test("basic flow, simple notation", () => {
 	assertEquals(fsm.can("toggle"), true);
 
 	// fire BAD event (a.k.a initiate transition)
-	assertThrows(() => fsm.send("stop"));
+	assertThrows(() => fsm.trigger("stop"));
 
 	// fire BAD event in non-strict silent mode (if needed)
-	assertEquals(fsm.send("stop", null, false), "OFF");
+	assertEquals(fsm.trigger("stop", null, false), "OFF");
 
 	// fire CORRECT event (a.k.a initiate transition)
-	assertEquals(fsm.send("start"), "ON");
+	assertEquals(fsm.trigger("start"), "ON");
 
 	//
 	assertEquals(fsm.getCurrent(), "ON");
@@ -61,9 +61,9 @@ Deno.test("basic flow, simple notation", () => {
 	]);
 
 	// now wilcard toggle
-	assertEquals(fsm.send("toggle"), "OFF");
+	assertEquals(fsm.trigger("toggle"), "OFF");
 	assertEquals(fsm.getCurrent(), "OFF");
-	assertEquals(fsm.send("toggle"), "ON");
+	assertEquals(fsm.trigger("toggle"), "ON");
 	assertEquals(fsm.getCurrent(), "ON");
 
 	// console.log(log);
@@ -82,7 +82,7 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 			ON: {
 				stop: (_payload, _meta) => "OFF",
 				_exit: (_payload, metaWithSend) => {
-					log.push(["ON._exit", omit(metaWithSend, ["send"])]);
+					log.push(["ON._exit", omit(metaWithSend, ["trigger"])]);
 				},
 			},
 			OFF: {
@@ -99,18 +99,18 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 					},
 				},
 				_entry: (_payload, metaWithSend) => {
-					log.push(["OFF._entry", omit(metaWithSend, ["send"])]);
+					log.push(["OFF._entry", omit(metaWithSend, ["trigger"])]);
 				},
 			},
 			"*": {
 				toggle: {
 					target: (_payload, metaWithSend) => {
-						const { send, state } = metaWithSend;
-						return state.current === "ON" ? send("stop") : send("start");
+						const { trigger, state } = metaWithSend;
+						return state.current === "ON" ? trigger("stop") : trigger("start");
 					},
 				},
 				_entry: (_payload, metaWithSend) => {
-					log.push(["*._entry", omit(metaWithSend, ["send"])]);
+					log.push(["*._entry", omit(metaWithSend, ["trigger"])]);
 				},
 			},
 		},
@@ -122,7 +122,7 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 
 	assertEquals(fsm.getCurrent(), "OFF");
 
-	assertEquals(fsm.send("toggle", { some: "payload" }), "ON");
+	assertEquals(fsm.trigger("toggle", { some: "payload" }), "ON");
 
 	// console.log(log);
 	assertEquals(log, [
@@ -161,7 +161,7 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 
 	//
 	log = []; // reset log
-	assertEquals(fsm.send("toggle", { some: "payload" }), "OFF");
+	assertEquals(fsm.trigger("toggle", { some: "payload" }), "OFF");
 
 	// console.log(log);
 	assertEquals(log, [
@@ -200,19 +200,19 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 	assertEquals(context, { counter: 1 });
 
 	// now, this must still work
-	assertEquals(fsm.send("start"), "ON");
+	assertEquals(fsm.trigger("start"), "ON");
 
 	// this again, because we're going OFF
-	assertEquals(fsm.send("toggle"), "OFF");
+	assertEquals(fsm.trigger("toggle"), "OFF");
 
 	// not anymore, because GUARD in action, must not allow to start
-	assertEquals(fsm.send("start"), "OFF");
+	assertEquals(fsm.trigger("start"), "OFF");
 	assertEquals(context, { counter: 2 });
 
 	// more explicit... still OFF
-	assertEquals(fsm.send("toggle"), "OFF");
-	assertEquals(fsm.send("toggle"), "OFF");
-	assertEquals(fsm.send("toggle"), "OFF");
+	assertEquals(fsm.trigger("toggle"), "OFF");
+	assertEquals(fsm.trigger("toggle"), "OFF");
+	assertEquals(fsm.trigger("toggle"), "OFF");
 
 	//
 	assertEquals(context, { counter: 2 });

@@ -50,7 +50,7 @@ export type TransitionMetaWithSend<
 	TEvent extends PropertyKey,
 	TContext
 > = TransitionMeta<TState, TContext> & {
-	send: (
+	trigger: (
 		event: EventName<FsmConfig<TState, TEvent, TContext>>,
 		payload?: any
 	) => TState;
@@ -115,7 +115,7 @@ export function createFsm<
 
 	/** Sends an event to the machine to trigger a transition. Returns state after the event
 	 * was handled (could be new could be the same...) */
-	send: (
+	trigger: (
 		event: EventName<FsmConfig<TState, TEvent, TContext>>,
 		payload?: any,
 		strict?: boolean
@@ -133,8 +133,8 @@ export function createFsm<
 } {
 	const { logger = createLogger("FSM") } = options ?? {};
 
-	// (not only) debug helper, to see how deep the potential send recursion is
-	// (a `send` might call another `send` - which is completely valid)
+	// (not only) debug helper, to see how deep the potential trigger recursion is
+	// (a `trigger` might call another `trigger` - which is completely valid)
 	let depth = 0;
 
 	// Use a type assertion for the initial state
@@ -144,14 +144,14 @@ export function createFsm<
 	//
 	const getState = () => ({ current, previous });
 	const createMeta = () => ({ state: getState(), context, depth });
-	const createMetaWithSend = () => ({ ...createMeta(), send });
+	const createMetaWithSend = () => ({ ...createMeta(), trigger });
 
 	//
 	const pubsub = createPubSub();
 	const notify = () => pubsub.publish("change", getState());
 
 	//
-	function send(
+	function trigger(
 		event: EventName<FsmConfig<TState, TEvent, TContext>>,
 		payload?: any,
 		strict: boolean = true
@@ -182,9 +182,12 @@ export function createFsm<
 		//
 		if (typeof def === "object") {
 			target = def.target;
-			if (typeof def.canTransition === "function")
+			if (typeof def.canTransition === "function") {
 				canTransition = def.canTransition;
-			if (typeof def.effect === "function") effect = def.effect;
+			}
+			if (typeof def.effect === "function") {
+				effect = def.effect;
+			}
 		} else {
 			target = def as TState;
 		}
@@ -246,7 +249,7 @@ export function createFsm<
 			throw new Error(msg);
 		}
 
-		// if we were calling send recursively with same output, we validly might not have a change...
+		// if we were calling trigger recursively with same output, we validly might not have a change...
 		if (current !== nextState) {
 			// 4. update state
 			previous = current;
@@ -282,16 +285,13 @@ export function createFsm<
 		//
 		subscribe,
 		//
-		send,
+		trigger,
 		// non-reactive current getter
 		getCurrent: () => getState().current,
 		//
 		is: (stateName: TState): boolean => current === stateName,
 		// NOTE: this does not check the `canTransition` guards
-		can(eventName: EventName<FsmConfig<TState, TEvent, TContext>>) {
-			return (
-				!!config[current]?.[eventName] || !!config["*" as TState]?.[eventName]
-			);
-		},
+		can: (eventName: EventName<FsmConfig<TState, TEvent, TContext>>) =>
+			!!config[current]?.[eventName] || !!config["*" as TState]?.[eventName],
 	};
 }

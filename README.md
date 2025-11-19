@@ -18,7 +18,7 @@ Note: The wildcard notation "*" is supported as a DRY shortcut for transition de
 
 **Context** - A custom object accessible throughout the FSM's lifetime, containing arbitrary data that can be read and modified.
 
-**Entry/Exit** - Optional lifecycle hooks executed when entering or exiting a state during a transition. During this phase the FSM can trigger another transition (by sending an event).
+**_entry/_exit** - Optional lifecycle hooks executed when entering or exiting a state during a transition. During this phase the FSM can trigger another transition (by sending an event).
 
 
 
