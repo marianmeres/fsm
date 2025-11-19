@@ -7,9 +7,8 @@ type SwitchEvent = "toggle" | "start" | "stop";
 
 Deno.test("basic flow, simple notation", () => {
 	const log: any[] = [];
-	const context = { foo: "bar" };
 
-	const fsm = createFsm<SwitchState, SwitchEvent, typeof context>(
+	const fsm = createFsm<SwitchState, SwitchEvent>(
 		"OFF",
 		{
 			ON: {
@@ -26,7 +25,7 @@ Deno.test("basic flow, simple notation", () => {
 				},
 			},
 		},
-		context,
+		null,
 		{ logger: null }
 	);
 

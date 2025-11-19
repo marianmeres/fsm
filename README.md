@@ -2,27 +2,49 @@
 
 Lightweight, typed, framework-agnostic Finite State Machine.
 
+## Install
+```sh
+deno add jsr:@marianmeres/fsm
+```
+```sh
+npm install @marianmeres/fsm
+```
+
 ## Terminology
 
-**State** - A string label representing the FSM's current state.
+**State**
+
+A string label representing the FSM's current state.
 
 Note: The wildcard notation "*" is supported as a DRY shortcut for transition definitions but is not considered a true state label.
 
-**Event** - A string label sent to the FSM to trigger a state transition.
+**Event**
 
-**Transition** - means 2 things:
+A string label sent to the FSM to trigger a state transition. Might be considered as a synonym
+with _transition_.
+
+**Transition**
+
 1. The synchronous lifecycle phase that occurs after receiving an event and before the state actually changes. During this phase, _guards_ are evaluated and _effects_ are executed.
 2. Actual function (if exists) which is executed during the transition period after the _effects_.
 
-**Guard** (a.k.a `canTransition`) - An optional function that determines whether a transition should proceed, based on context evaluation or other conditions. Returns a boolean.
+**Guard** (a.k.a `canTransition`) 
 
-**Effect** - Side-effect function executed during transitions in a "fire-and-forget" manner. Run before the state change (after the guard).
+An optional function that determines whether a transition should proceed, based on context evaluation or other conditions. Returns a boolean.
 
-**Context** - A custom object accessible throughout the FSM's lifetime, containing arbitrary data that can be read and modified.
+**Effect** 
 
-**_entry/_exit** - Optional lifecycle hooks executed when entering or exiting a state during a transition. During this phase the FSM can trigger another transition (by sending an event).
+Side-effect function executed during transitions in a "fire-and-forget" manner. Run before the state change (after the guard).
 
-# FSM happy execution flow
+**Context** 
+
+A custom object accessible throughout the FSM's lifetime, containing arbitrary data that can be read and modified.
+
+**_entry**, **_exit** 
+
+Optional lifecycle hooks executed when entering or exiting a state during a transition. During this phase the FSM can trigger another transition (by sending an event).
+
+## FSM happy execution flow
 
 Assuming below that event is configured, guards do allow, new state is different from the old.
 
@@ -35,3 +57,48 @@ Assuming below that event is configured, guards do allow, new state is different
 7. execute *_entry* hook on the NEW state
 8. notify subscribers
 
+## Basic example
+
+```typescript
+import { createFsm } from "@marianmeres/fsm";
+```
+
+```typescript
+type SwitchState = "ON" | "OFF";
+type SwitchEvent = "toggle" | "start" | "stop";
+
+const fsm = createFsm<SwitchState, SwitchEvent>(
+    "OFF", // initial state
+    // available states and theirs events/transitions config map
+    {
+        // ON state definition
+        ON: {
+            // event/transition: target state
+            stop: "OFF",
+        },
+        // OFF state definition
+        OFF: {
+            // event/transition: target state
+            start: "ON",
+        },
+        // DRY shortcut - every state has `toggle` as available event/transition
+        "*": {
+            // transition
+            toggle: (_payload, meta) => {
+                const { current, send } = meta;
+                return current === "ON" ? send("stop") : send("start");
+            },
+        },
+    },
+);
+
+const unsub = fsm.subscribe((state) => {
+    console.log(state)
+});
+
+assertEquals(fsm.getCurrent(), 'OFF');
+
+// sends "toggle" event, which initiates transition to state "ON"
+assertEquals(fsm.send('toggle'), 'ON');
+
+```

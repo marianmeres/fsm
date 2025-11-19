@@ -76,12 +76,14 @@ const packageJson = {
 	license: "MIT",
 	repository: {
 		type: "git",
-		url: "git+https://github.com/marianmeres/interpolate.git",
+		url: "git+https://github.com/marianmeres/fsm.git",
 	},
 	bugs: {
-		url: "https://github.com/marianmeres/interpolate/issues",
+		url: "https://github.com/marianmeres/fsm/issues",
 	},
 	dependencies: {
+		"@marianmeres/pubsub": "^2.2.0",
+		"@marianmeres/clog": "^2.3.3"
 	}
 };
 Deno.writeTextFileSync(

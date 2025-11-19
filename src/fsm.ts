@@ -96,12 +96,11 @@ export type FsmConfig<
 > = Record<TState | "*", Partial<StateConfig<TState, TEvent, TContext>>>;
 
 /** Helper to extract all relevant keys from second-level records */
-type EventName<T> = {
+export type EventName<T> = {
 	[K in keyof T]: keyof Omit<T[K], "_entry" | "_exit">;
 }[keyof T];
 
-/** If input is not a function will return one as a wrapper which returns the input.
- * If input is a function will return it as is. */
+/** Will resolve the value as a function returning itself if it is not a function already */
 function resolve(v: any) {
 	return typeof v !== "function" ? (..._args: any[]) => v : v;
 }
@@ -110,7 +109,7 @@ function resolve(v: any) {
 export function createFsm<
 	TState extends PropertyKey,
 	TEvent extends PropertyKey,
-	TContext
+	TContext = unknown
 >(
 	initial: TState,
 	config: FsmConfig<TState, TEvent, TContext>,
@@ -221,7 +220,8 @@ export function createFsm<
 		}
 
 		// 2. execute EXIT handler (of the OLD state)
-		const exitAction = currentStateConfig?._exit ?? wildcardStateConfig?._exit;
+		const exitAction =
+			currentStateConfig?._exit ?? (wildcardStateConfig as any)?._exit;
 		if (typeof exitAction === "function") {
 			try {
 				exitAction(payload, createMetaWithSend());
