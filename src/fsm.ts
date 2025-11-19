@@ -50,7 +50,7 @@ export type TransitionMetaWithSend<
 	TEvent extends PropertyKey,
 	TContext
 > = TransitionMeta<TState, TContext> & {
-	trigger: (
+	send: (
 		event: EventName<FsmConfig<TState, TEvent, TContext>>,
 		payload?: any
 	) => TState;
@@ -113,9 +113,9 @@ export function createFsm<
 	/** Subscribes to state changes. */
 	subscribe: (cb: (data: FsmState<TState>) => void) => () => void;
 
-	/** Sends an event to the machine to trigger a transition. Returns state after the event
+	/** Sends an event to the machine to send a transition. Returns state after the event
 	 * was handled (could be new could be the same...) */
-	trigger: (
+	send: (
 		event: EventName<FsmConfig<TState, TEvent, TContext>>,
 		payload?: any,
 		strict?: boolean
@@ -133,8 +133,8 @@ export function createFsm<
 } {
 	const { logger = createLogger("FSM") } = options ?? {};
 
-	// (not only) debug helper, to see how deep the potential trigger recursion is
-	// (a `trigger` might call another `trigger` - which is completely valid)
+	// (not only) debug helper, to see how deep the potential send recursion is
+	// (a `send` might call another `send` - which is completely valid)
 	let depth = 0;
 
 	// Use a type assertion for the initial state
@@ -144,14 +144,14 @@ export function createFsm<
 	//
 	const getState = () => ({ current, previous });
 	const createMeta = () => ({ state: getState(), context, depth });
-	const createMetaWithSend = () => ({ ...createMeta(), trigger });
+	const createMetaWithSend = () => ({ ...createMeta(), send });
 
 	//
 	const pubsub = createPubSub();
 	const notify = () => pubsub.publish("change", getState());
 
 	//
-	function trigger(
+	function send(
 		event: EventName<FsmConfig<TState, TEvent, TContext>>,
 		payload?: any,
 		strict: boolean = true
@@ -249,7 +249,7 @@ export function createFsm<
 			throw new Error(msg);
 		}
 
-		// if we were calling trigger recursively with same output, we validly might not have a change...
+		// if we were calling send recursively with same output, we validly might not have a change...
 		if (current !== nextState) {
 			// 4. update state
 			previous = current;
@@ -285,7 +285,7 @@ export function createFsm<
 		//
 		subscribe,
 		//
-		trigger,
+		send,
 		// non-reactive current getter
 		getCurrent: () => getState().current,
 		//
