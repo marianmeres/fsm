@@ -105,7 +105,7 @@ function resolve(v: any) {
 	return typeof v !== "function" ? (..._args: any[]) => v : v;
 }
 
-/** Lightweight, typed, framework-agnostic Finite State Machine. */
+/** Lightweight, typed, framework-agnostic Finite State Machine factory function. */
 export function createFsm<
 	TState extends PropertyKey,
 	TEvent extends PropertyKey,
@@ -119,7 +119,7 @@ export function createFsm<
 	/** Subscribes to state changes. */
 	subscribe: (cb: (data: FsmState<TState>) => void) => () => void;
 
-	/** Sends an event to the machine to send a transition. Returns state after the event
+	/** Sends an event to the machine to "request" a state change. Returns state after the event
 	 * was handled (could be new could be the same...) */
 	send: (
 		event: EventName<FsmConfig<TState, TEvent, TContext>>,
