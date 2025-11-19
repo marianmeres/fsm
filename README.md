@@ -20,8 +20,8 @@ Note: The wildcard notation "*" is supported as a DRY shortcut for transition de
 
 **Event**
 
-A string label sent to the FSM to trigger a state transition. Might be considered as a synonym
-with _transition_.
+A string label sent to the FSM to trigger a state transition. It can be considered a synonym
+for _transition_.
 
 **Transition**
 
@@ -42,7 +42,7 @@ A custom object accessible throughout the FSM's lifetime, containing arbitrary d
 
 **_entry**, **_exit** 
 
-Optional lifecycle hooks executed when entering or exiting a state during a transition. During this phase the FSM can trigger another transition (by sending an event).
+Optional lifecycle hooks executed when entering or exiting a state during a transition. During this phase it can trigger another transition (by sending an event).
 
 ## FSM happy execution flow
 
@@ -50,14 +50,14 @@ Assuming below that event is configured, guards do allow, new state is different
 
 1. set initial state
 2. `send` an _event_
-3. evaluate _guards_ (a.k.a. `canTransition`)
+3. evaluate _guards_
 4. execute *_exit* hook on the OLD state
 5. execute _effects_
 6. set new state (either with the returned value of the transition function or with direct text label)
 7. execute *_entry* hook on the NEW state
 8. notify subscribers
 
-## Basic example
+## Examples
 
 ```typescript
 import { createFsm } from "@marianmeres/fsm";
@@ -67,6 +67,7 @@ import { createFsm } from "@marianmeres/fsm";
 type SwitchState = "ON" | "OFF";
 type SwitchEvent = "toggle" | "start" | "stop";
 
+// no guards, no side effects in this example
 const fsm = createFsm<SwitchState, SwitchEvent>(
     "OFF", // initial state
     // available states and theirs events/transitions config map
@@ -83,7 +84,7 @@ const fsm = createFsm<SwitchState, SwitchEvent>(
         },
         // DRY shortcut - every state has `toggle` as available event/transition
         "*": {
-            // transition
+            // event/transition returning target state (via another `send` call)
             toggle: (_payload, meta) => {
                 const { current, send } = meta;
                 return current === "ON" ? send("stop") : send("start");
