@@ -130,6 +130,9 @@ export function createFsm<
 	/** Non-reactive current state getter. */
 	getCurrent: () => null | TState;
 
+	/** Non-reactive meta getter. Intended primarily for debugging. */
+	getMeta: () => TransitionMeta<TState, TContext>;
+
 	/** Checks if the machine is in a specific state. */
 	is: (stateName: TState) => boolean;
 
@@ -295,6 +298,8 @@ export function createFsm<
 		send,
 		// non-reactive current getter
 		getCurrent: () => getState().current,
+		//
+		getMeta: () => createMeta(),
 		//
 		is: (stateName: TState): boolean => current === stateName,
 		// NOTE: this does not check the `canTransition` guards
