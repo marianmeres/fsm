@@ -21,8 +21,8 @@ Deno.test("basic flow, simple notation", () => {
 			// will be available for every state
 			"*": {
 				toggle: (payload, meta) => {
-					const { state, send } = meta;
-					return state.current === "ON" ? send("stop") : send("start");
+					const { current, send } = meta;
+					return current === "ON" ? send("stop") : send("start");
 				},
 			},
 		},
@@ -105,8 +105,8 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 			"*": {
 				toggle: {
 					target: (_payload, metaWithSend) => {
-						const { send, state } = metaWithSend;
-						return state.current === "ON" ? send("stop") : send("start");
+						const { send, current } = metaWithSend;
+						return current === "ON" ? send("stop") : send("start");
 					},
 				},
 				_entry: (_payload, metaWithSend) => {
@@ -133,7 +133,8 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 		[
 			"canTransition",
 			{
-				state: { current: "OFF", previous: null },
+				current: "OFF",
+				previous: null,
 				context: { counter: 1 },
 				depth: 2,
 			},
@@ -141,7 +142,8 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 		[
 			"effect",
 			{
-				state: { current: "OFF", previous: null },
+				current: "OFF",
+				previous: null,
 				context: { counter: 1 },
 				depth: 2,
 			},
@@ -150,7 +152,8 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 		[
 			"*._entry",
 			{
-				state: { current: "ON", previous: "OFF" },
+				current: "ON",
+				previous: "OFF",
 				context: { counter: 1 },
 				depth: 2,
 			},
@@ -170,7 +173,8 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 		[
 			"ON._exit",
 			{
-				state: { current: "ON", previous: "OFF" },
+				current: "ON",
+				previous: "OFF",
 				context: { counter: 1 },
 				depth: 1,
 			},
@@ -178,7 +182,8 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 		[
 			"ON._exit",
 			{
-				state: { current: "ON", previous: "OFF" },
+				current: "ON",
+				previous: "OFF",
 				context: { counter: 1 },
 				depth: 2,
 			},
@@ -187,7 +192,8 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 		[
 			"OFF._entry",
 			{
-				state: { current: "OFF", previous: "ON" },
+				current: "OFF",
+				previous: "ON",
 				context: { counter: 1 },
 				depth: 2,
 			},
@@ -205,7 +211,7 @@ Deno.test("basic flow, entry, exit, full notation", () => {
 	// this again, because we're going OFF
 	assertEquals(fsm.send("toggle"), "OFF");
 
-	// not anymore, because GUARD in action, must not allow to start
+	// not anymore, because guard must not allow
 	assertEquals(fsm.send("start"), "OFF");
 	assertEquals(context, { counter: 2 });
 

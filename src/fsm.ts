@@ -1,8 +1,8 @@
 import { type Logger, createLogger } from "@marianmeres/clog";
 import { createPubSub } from "@marianmeres/pubsub";
 
-/**  */
-export type LifeCycleEvent<
+/** Special case lifecycle hooks */
+export type LifeCycleHook<
 	TState extends PropertyKey,
 	TEvent extends PropertyKey,
 	TContext
@@ -11,6 +11,7 @@ export type LifeCycleEvent<
 	(payload: any, meta: TransitionMetaWithSend<TState, TEvent, TContext>) => void
 >;
 
+/** Target state resolver function */
 export type TStateTargetFn<
 	TState extends PropertyKey,
 	TEvent extends PropertyKey,
@@ -20,7 +21,7 @@ export type TStateTargetFn<
 	meta: TransitionMetaWithSend<TState, TEvent, TContext>
 ) => TState;
 
-/**  */
+/** Event definition object */
 export type EventDefObj<
 	TState extends PropertyKey,
 	TEvent extends PropertyKey,
@@ -34,17 +35,18 @@ export type EventDefObj<
 	effect?: (payload: any, meta: TransitionMeta<TState, TContext>) => void;
 };
 
-/**  */
+/** Internal state (current and previous) representation object */
 export type FsmState<TState> = { current: TState; previous: TState | null };
 
-/**  */
+/** Meta context object passed to guards and effects */
 export type TransitionMeta<TState extends PropertyKey, TContext> = {
-	state: FsmState<TState>;
+	current: FsmState<TState>["current"];
+	previous: FsmState<TState>["previous"];
 	context?: TContext;
 	depth: number;
 };
 
-/**  */
+/** Extended meta object with `send` method to allow state change from within a running transition */
 export type TransitionMetaWithSend<
 	TState extends PropertyKey,
 	TEvent extends PropertyKey,
@@ -56,7 +58,12 @@ export type TransitionMetaWithSend<
 	) => TState;
 };
 
-/**  */
+/** Event definition... one of:
+ *    - label
+ *    - fn resolving to label
+ *    - object definition
+ *    - fn resolving to object definition
+ */
 export type EventDef<
 	TState extends PropertyKey,
 	TEvent extends PropertyKey,
@@ -73,15 +80,15 @@ export type EventDef<
 			meta: TransitionMetaWithSend<TState, TEvent, TContext>
 	  ) => EventDefObj<TState, TEvent, TContext>);
 
-/**  */
+/** State configuration */
 export type StateConfig<
 	TState extends PropertyKey,
 	TEvent extends PropertyKey,
 	TContext
 > = Record<TEvent, EventDef<TState, TEvent, TContext>> &
-	LifeCycleEvent<TState, TEvent, TContext>;
+	LifeCycleHook<TState, TEvent, TContext>;
 
-/**  */
+/** Full factory configuration object map */
 export type FsmConfig<
 	TState extends PropertyKey,
 	TEvent extends PropertyKey,
@@ -95,7 +102,7 @@ type EventName<T> = {
 
 /** If input is not a function will return one as a wrapper which returns the input.
  * If input is a function will return it as is. */
-function toFn(v: any) {
+function resolve(v: any) {
 	return typeof v !== "function" ? (..._args: any[]) => v : v;
 }
 
@@ -137,20 +144,20 @@ export function createFsm<
 	// (a `send` might call another `send` - which is completely valid)
 	let depth = 0;
 
-	// Use a type assertion for the initial state
+	//
 	let current: TState = initial;
 	let previous: TState | null = null;
 
-	//
+	// internal helpers
 	const getState = () => ({ current, previous });
-	const createMeta = () => ({ state: getState(), context, depth });
+	const createMeta = () => ({ ...getState(), context, depth });
 	const createMetaWithSend = () => ({ ...createMeta(), send });
 
 	//
 	const pubsub = createPubSub();
 	const notify = () => pubsub.publish("change", getState());
 
-	//
+	// main api fn
 	function send(
 		event: EventName<FsmConfig<TState, TEvent, TContext>>,
 		payload?: any,
@@ -236,8 +243,8 @@ export function createFsm<
 			}
 		}
 
-		// NOTE: this
-		const nextState: TState = toFn(target)(payload, createMetaWithSend());
+		//
+		const nextState: TState = resolve(target)(payload, createMetaWithSend());
 
 		// sanity check - is the next state actually available?
 		// (although this could be checked technically earlier, this is the correct lazy moment)
