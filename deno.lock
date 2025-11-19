@@ -1,0 +1,38 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@marianmeres/clog@^2.3.3": "2.3.3",
+    "jsr:@marianmeres/pubsub@^2.2.0": "2.2.0",
+    "jsr:@std/assert@1": "1.0.16",
+    "jsr:@std/collections@^1.1.3": "1.1.3",
+    "jsr:@std/internal@^1.0.12": "1.0.12"
+  },
+  "jsr": {
+    "@marianmeres/clog@2.3.3": {
+      "integrity": "37780f272c28a89aa1c067b27f1234d6f9f109c0b851a49bf7eeeeb44efcedfc"
+    },
+    "@marianmeres/pubsub@2.2.0": {
+      "integrity": "7edf68b6ea2aac8cbfb1c253c60a21917e2d296c6ec21c88a40b5a03d70875ad"
+    },
+    "@std/assert@1.0.16": {
+      "integrity": "6a7272ed1eaa77defe76e5ff63ca705d9c495077e2d5fd0126d2b53fc5bd6532",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/collections@1.1.3": {
+      "integrity": "bf8b0818886df6a32b64c7d3b037a425111f28278d69fd0995aeb62777c986b0"
+    },
+    "@std/internal@1.0.12": {
+      "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@marianmeres/clog@^2.3.3",
+      "jsr:@marianmeres/pubsub@^2.2.0",
+      "jsr:@std/assert@1",
+      "jsr:@std/collections@^1.1.3"
+    ]
+  }
+}
