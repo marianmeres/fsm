@@ -1,309 +1,248 @@
-import { type Logger, createLogger } from "@marianmeres/clog";
-import { createPubSub } from "@marianmeres/pubsub";
+import { createPubSub, type Unsubscriber } from "@marianmeres/pubsub";
 
-/** Special case lifecycle hooks */
-export type LifeCycleHook<
-	TState extends PropertyKey,
-	TEvent extends PropertyKey,
-	TContext
-> = Record<
-	"_entry" | "_exit",
-	(payload: any, meta: TransitionMetaWithSend<TState, TEvent, TContext>) => void
->;
+/** Arbitrary transition payload */
+export type FSMPayload = Record<string, any>;
 
-/** Target state resolver function */
-export type TStateTargetFn<
-	TState extends PropertyKey,
-	TEvent extends PropertyKey,
-	TContext
-> = (
-	payload: any,
-	meta: TransitionMetaWithSend<TState, TEvent, TContext>
-) => TState;
-
-/** Event definition object */
-export type EventDefObj<
-	TState extends PropertyKey,
-	TEvent extends PropertyKey,
+/** State configuration value */
+export type FSMStatesConfigValue<
+	TState extends string,
+	TTransition extends string,
 	TContext
 > = {
-	target: TState | TStateTargetFn<TState, TEvent, TContext>;
-	canTransition?: (
-		payload: any,
-		meta: TransitionMeta<TState, TContext>
-	) => boolean;
-	effect?: (payload: any, meta: TransitionMeta<TState, TContext>) => void;
+	onEnter?: (context: TContext, payload?: FSMPayload) => void;
+	on: Partial<Record<TTransition, TransitionDef<TState, TContext>>>;
+	onExit?: (context: TContext, payload?: FSMPayload) => void;
 };
 
-/** Internal state (current and previous) representation object */
-export type FsmState<TState> = { current: TState; previous: TState | null };
+/** State to configuration map */
+export type FSMStatesConfigMap<
+	TState extends string,
+	TTransition extends string,
+	TContext
+> = Record<TState, FSMStatesConfigValue<TState, TTransition, TContext>>;
 
-/** Meta context object passed to guards and effects */
-export type TransitionMeta<TState extends PropertyKey, TContext> = {
-	current: FsmState<TState>["current"];
-	previous: FsmState<TState>["previous"];
+/** Constructor configuration */
+export type FSMConfig<
+	TState extends string,
+	TTransition extends string,
+	TContext
+> = {
+	initial: TState;
+	states: FSMStatesConfigMap<TState, TTransition, TContext>;
 	context?: TContext;
-	depth: number;
 };
 
-/** Extended meta object with `send` method to allow state change from within a running transition */
-export type TransitionMetaWithSend<
-	TState extends PropertyKey,
-	TEvent extends PropertyKey,
-	TContext
-> = TransitionMeta<TState, TContext> & {
-	send: (
-		event: EventName<FsmConfig<TState, TEvent, TContext>>,
-		payload?: any
-	) => TState;
+/** Transition configuration object  */
+export type TransitionObj<TState, TContext> = {
+	target: TState;
+	guard?: (context: TContext, payload: FSMPayload) => boolean;
 };
 
-/** Event definition... one of:
- *    - label
- *    - fn resolving to label
- *    - object definition
- *    - fn resolving to object definition
- */
-export type EventDef<
-	TState extends PropertyKey,
-	TEvent extends PropertyKey,
-	TContext
-> =
+/** Transition configuration definition */
+export type TransitionDef<TState, TContext> =
 	| TState
-	| ((
-			payload: any,
-			meta: TransitionMetaWithSend<TState, TEvent, TContext>
-	  ) => TState)
-	| EventDefObj<TState, TEvent, TContext>
-	| ((
-			payload: any,
-			meta: TransitionMetaWithSend<TState, TEvent, TContext>
-	  ) => EventDefObj<TState, TEvent, TContext>);
+	| TransitionObj<TState, TContext>
+	| TransitionObj<TState, TContext>[];
 
-/** State configuration */
-export type StateConfig<
-	TState extends PropertyKey,
-	TEvent extends PropertyKey,
-	TContext
-> = Record<TEvent, EventDef<TState, TEvent, TContext>> &
-	LifeCycleHook<TState, TEvent, TContext>;
+/** FSM's published state */
+export type PublishedState<TState> = {
+	current: TState;
+	previous: TState | null;
+};
 
-/** Full factory configuration object map */
-export type FsmConfig<
-	TState extends PropertyKey,
-	TEvent extends PropertyKey,
-	TContext
-> = Record<TState | "*", Partial<StateConfig<TState, TEvent, TContext>>>;
-
-/** Helper to extract all relevant keys from second-level records */
-export type EventName<T> = {
-	[K in keyof T]: keyof Omit<T[K], "_entry" | "_exit">;
-}[keyof T];
-
-/** Will resolve the value as a function returning itself if it is not a function already */
-function resolve(v: any) {
-	return typeof v !== "function" ? (..._args: any[]) => v : v;
+/** For historical reasons exporting a factory fn as well (same as calling `new FSM`) */
+export function createFsm<
+	TState extends string,
+	TTransition extends string,
+	TContext = any
+>(config: FSMConfig<TState, TTransition, TContext>) {
+	return new FSM<TState, TTransition, TContext>(config);
 }
 
-/** Lightweight, typed, framework-agnostic Finite State Machine factory function. */
-export function createFsm<
-	TState extends PropertyKey,
-	TEvent extends PropertyKey,
-	TContext = unknown
->(
-	initial: TState,
-	config: FsmConfig<TState, TEvent, TContext>,
-	context?: TContext,
-	options: Partial<{ logger: Logger | null }> = {}
-): {
-	/** Subscribes to state changes. */
-	subscribe: (cb: (data: FsmState<TState>) => void) => () => void;
+/**
+ * Lightweight, typed, framework-agnostic Finite State Machine.
+ */
+export class FSM<
+	TState extends string,
+	TTransition extends string,
+	TContext = any
+> {
+	/** FSM's previous state */
+	#previous: TState | null = null;
 
-	/** Sends an event to the machine to "request" a state change. Returns state after the event
-	 * was handled (could be new could be the same...) */
-	send: (
-		event: EventName<FsmConfig<TState, TEvent, TContext>>,
-		payload?: any,
-		strict?: boolean
-	) => TState;
+	/** FSM's current state */
+	state: TState;
 
-	/** Non-reactive current state getter. */
-	getCurrent: () => null | TState;
+	/** A custom object accessible throughout the FSM's lifetime, containing arbitrary
+	 * data that can be read and modified.*/
+	context: TContext;
 
-	/** Non-reactive meta getter. Intended primarily for debugging. */
-	getMeta: () => TransitionMeta<TState, TContext>;
+	/** Internal pub sub */
+	#pubsub = createPubSub();
 
-	/** Checks if the machine is in a specific state. */
-	is: (stateName: TState) => boolean;
-
-	/** Checks if an event is a valid transition from the current state. (Does not check
-	 * guards). */
-	can: (eventName: EventName<FsmConfig<TState, TEvent, TContext>>) => boolean;
-} {
-	const { logger = createLogger("FSM") } = options ?? {};
-
-	// (not only) debug helper, to see how deep the potential send recursion is
-	// (a `send` might call another `send` - which is completely valid)
-	let depth = 0;
-
-	//
-	let current: TState = initial;
-	let previous: TState | null = null;
-
-	// internal helpers
-	const getState = () => ({ current, previous });
-	const createMeta = () => ({ ...getState(), context, depth });
-	const createMetaWithSend = () => ({ ...createMeta(), send });
-
-	//
-	const pubsub = createPubSub();
-	const notify = () => pubsub.publish("change", getState());
-
-	// main api fn
-	function send(
-		event: EventName<FsmConfig<TState, TEvent, TContext>>,
-		payload?: any,
-		strict: boolean = true
-	): TState {
-		depth++;
-		const currentStateConfig = config[current];
-		const wildcardStateConfig = config["*"] ?? {};
-		const def = currentStateConfig?.[event] ?? config["*" as TState]?.[event];
-
-		if (!def) {
-			const msg = `Invalid event (transition) "${String(current)}" -> "${String(
-				event
-			)}"`;
-			logger?.warn?.(msg);
-			if (strict) throw new Error(msg);
-			return current;
-		}
-
-		// default fallbacks
-		let target: TState | TStateTargetFn<TState, TEvent, TContext>;
-		let canTransition: EventDefObj<
-			TState,
-			TEvent,
-			TContext
-		>["canTransition"] = () => true;
-		let effect: EventDefObj<TState, TEvent, TContext>["effect"] = () => {};
-
-		//
-		if (typeof def === "object") {
-			target = def.target;
-			if (typeof def.canTransition === "function") {
-				canTransition = def.canTransition;
-			}
-			if (typeof def.effect === "function") {
-				effect = def.effect;
-			}
-		} else {
-			target = def as TState;
-		}
-
-		// sanity check
-		if (!target) {
-			throw new TypeError(`Empty target for "${String(event)}"`);
-		}
-
-		// 1. check the canTransition guard
-		if (typeof canTransition === "function") {
-			let allowed = false;
-			try {
-				allowed = canTransition(payload, createMeta());
-			} catch (e) {
-				logger?.error?.(`Error in canTransition for "${String(event)}": ${e}`);
-				allowed = false;
-			}
-
-			if (!allowed) {
-				logger?.warn?.(`Guard prevented "${String(event)}" transition`);
-				return current;
-			}
-		}
-
-		// 2. execute EXIT handler (of the OLD state)
-		const exitAction =
-			currentStateConfig?._exit ?? (wildcardStateConfig as any)?._exit;
-		if (typeof exitAction === "function") {
-			try {
-				exitAction(payload, createMetaWithSend());
-			} catch (e) {
-				logger?.error?.(
-					`Error in exit handler for state "${String(current)}": ${e}`
-				);
-				// here we're swallowing the error, leaving the flow intact
-			}
-		}
-
-		// 3. execute TRANSITION effect
-		if (typeof effect === "function") {
-			try {
-				effect(payload, createMeta());
-			} catch (e) {
-				logger?.error?.(`Error in effect for event "${String(event)}": ${e}`);
-				// here we're swallowing the error, leaving the flow intact
-			}
-		}
-
-		//
-		const nextState: TState = resolve(target)(payload, createMetaWithSend());
-
-		// sanity check - is the next state actually available?
-		// (although this could be checked technically earlier, this is the correct lazy moment)
-		if (!config[nextState]) {
-			const msg = `Event "${String(
-				event
-			)}" resolved to invalid target state "${String(nextState)}"`;
-			logger?.error?.(msg);
-			throw new Error(msg);
-		}
-
-		// if we were calling send recursively with same output, we validly might not have a change...
-		if (current !== nextState) {
-			// 4. update state
-			previous = current;
-			current = nextState;
-
-			// 5. execute ENTRY handler (of the NEW state)
-			const entryAction = config[current]?._entry ?? config["*"]?._entry;
-			if (typeof entryAction === "function") {
-				try {
-					entryAction(payload, createMetaWithSend());
-				} catch (e) {
-					logger?.error?.(`Error in _entry for "${String(current)}": ${e}`);
-					// here we're swallowing the error, leaving the flow intact
-				}
-			}
-
-			// 6. notify
-			notify();
-		}
-
-		depth--;
-		return current;
+	/** Creates the FSM instance */
+	constructor(
+		public readonly config: FSMConfig<TState, TTransition, TContext>
+	) {
+		this.state = this.config.initial;
+		this.context = { ...(this.config.context ?? ({} as TContext)) };
 	}
 
-	//
-	const subscribe = (cb: (data: FsmState<TState>) => void): (() => void) => {
-		const unsub = pubsub.subscribe("change", cb);
-		cb(getState());
-		return unsub;
-	};
+	#getNotifyData() {
+		return {
+			current: this.state,
+			previous: this.#previous,
+			context: this.context,
+		};
+	}
 
-	return {
-		//
-		subscribe,
-		//
-		send,
-		// non-reactive current getter
-		getCurrent: () => getState().current,
-		//
-		getMeta: () => createMeta(),
-		//
-		is: (stateName: TState): boolean => current === stateName,
-		// NOTE: this does not check the `canTransition` guards
-		can: (eventName: EventName<FsmConfig<TState, TEvent, TContext>>) =>
-			!!config[current]?.[eventName] || !!config["*" as TState]?.[eventName],
-	};
+	#notify() {
+		this.#pubsub.publish("change", this.#getNotifyData());
+	}
+
+	/** Reactive subscription to FSM's state */
+	subscribe(
+		cb: (data: PublishedState<TState> & { context: TContext }) => void
+	): Unsubscriber {
+		const unsub = this.#pubsub.subscribe("change", cb);
+		cb(this.#getNotifyData());
+		return unsub;
+	}
+
+	/**
+	 * "Requests" FSM to transition to target state providing payload and respecting
+	 * the configuration. Guards and side effects, if defined,
+	 * will be synchronously evaluated and executed.
+	 *
+	 * Execution order during transition:
+	 *  1. onExit (OLD state)
+	 *  2. state changes
+	 *  3. onEnter (NEW state) - initialize, prepare
+	 *  5. notify consumers
+	 */
+	transition(event: TTransition, payload?: any): TState | null {
+		const currentStateConfig = this.config.states[this.state];
+
+		if (!currentStateConfig || !currentStateConfig.on) {
+			throw new Error(
+				`No transitions defined for state "${String(this.state)}"`
+			);
+		}
+
+		const transition = currentStateConfig.on[event];
+
+		if (!transition) {
+			// prettier-ignore
+			throw new Error(`Invalid transition "${String(event)}" from state "${String(this.state)}"`);
+		}
+
+		const nextState = this.#resolveTransition(transition, payload);
+
+		if (!nextState) {
+			// prettier-ignore
+			throw new Error(`No valid transition found for event "${String(event)}" in state "${String(this.state)}"`);
+		}
+
+		// 1. exit current state side-effect
+		if (typeof currentStateConfig.onExit === "function") {
+			currentStateConfig.onExit(this.context, payload);
+		}
+
+		// 2. save previous and set new state
+		this.#previous = this.state;
+		this.state = nextState;
+
+		// 3. enter new state side-effect
+		const nextStateConfig = this.config.states[nextState];
+		if (typeof nextStateConfig.onEnter === "function") {
+			nextStateConfig.onEnter(this.context, payload);
+		}
+
+		// 4. notify listeners
+		this.#notify();
+
+		// return current
+		return this.state;
+	}
+
+	/**
+	 *
+	 */
+	#resolveTransition(
+		transition: TransitionDef<TState, TContext>,
+		payload: FSMPayload
+	): TState | null {
+		// simple string transition
+		if (typeof transition === "string") {
+			return transition;
+		}
+
+		// array of guarded transitions
+		if (Array.isArray(transition)) {
+			for (const t of transition) {
+				if (typeof t.guard === "function" && t.guard(this.context, payload)) {
+					return t.target;
+				}
+			}
+			return null;
+		}
+
+		// single guarded transition object
+		if (typeof transition.guard === "function") {
+			return transition.guard(this.context, payload) ? transition.target : null;
+		}
+
+		return transition.target;
+	}
+
+	/**
+	 *
+	 */
+	reset(): FSM<TState, TTransition, TContext> {
+		this.state = this.config.initial;
+		this.context = { ...(this.config.context ?? ({} as TContext)) };
+		this.#notify();
+		return this;
+	}
+
+	/** Check whether the FSM is in the given state */
+	is(state: TState) {
+		return this.state === state;
+	}
+
+	/** Generates Mermaid state diagram notation from FSM config */
+	toMermaid() {
+		let mermaid = "stateDiagram-v2\n";
+		mermaid += `    [*] --> ${this.config.initial}\n`;
+
+		for (const entry of Object.entries(this.config.states)) {
+			const [stateName, stateConfig] = entry as [
+				TState,
+				FSMStatesConfigValue<TState, TTransition, TContext>
+			];
+			if (stateConfig.on) {
+				for (const entry2 of Object.entries(stateConfig.on)) {
+					const [transition, def] = entry2 as [
+						TTransition,
+						TransitionDef<TState, TContext>
+					];
+					if (typeof def === "string") {
+						mermaid += `    ${stateName} --> ${def}: ${transition}\n`;
+					} else if (Array.isArray(def)) {
+						def.forEach((t, idx) => {
+							const label = t.guard
+								? `${transition} [guard ${idx + 1}]`
+								: transition;
+							mermaid += `    ${stateName} --> ${t.target}: ${label}\n`;
+						});
+					} else if (def.target) {
+						const label = def.guard ? `${transition} [guarded]` : transition;
+						mermaid += `    ${stateName} --> ${def.target}: ${label}\n`;
+					}
+				}
+			}
+		}
+
+		return mermaid;
+	}
 }
