@@ -1,6 +1,6 @@
 # @marianmeres/fsm
 
-A lightweight, typed, and synchronous finite state machine that acts as a pure state graph description.
+A lightweight, typed, framework agnostic and synchronous finite state machine that acts as a pure state graph description.
 
 It manages state transitions and enforces rules via **guards** and **lifecycle hooks** (`onEnter`/`onExit`), but contains no business logic or async operations by design.
 
