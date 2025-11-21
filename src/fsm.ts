@@ -55,7 +55,9 @@ export function createFsm<
 	TState extends string,
 	TTransition extends string,
 	TContext = any
->(config: FSMConfig<TState, TTransition, TContext>) {
+>(
+	config: FSMConfig<TState, TTransition, TContext>
+): FSM<TState, TTransition, TContext> {
 	return new FSM<TState, TTransition, TContext>(config);
 }
 
