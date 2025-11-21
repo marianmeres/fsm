@@ -4,7 +4,7 @@ A lightweight, typed, and synchronous finite state machine that acts as a pure s
 
 It manages state transitions and enforces rules via **guards** and **lifecycle hooks** (`onEnter`/`onExit`), but contains no business logic or async operations by design.
 
-To integrate into your application, wrap this FSM in a layer that handles your business logic, orchestrates async operations, and calls `fsm.transition()` in response to events.
+To integrate into your application, wrap this FSM in a layer that handles your business logic, orchestrates async operations, and calls `fsm.transition(name, payload)` in response to events.
 
 This separation ensures the state machine remains simple, testable, and reusable across different contexts.
 
