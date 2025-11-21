@@ -206,12 +206,12 @@ export class FSM<
 	}
 
 	/** Check whether the FSM is in the given state */
-	is(state: TState) {
+	is(state: TState): boolean {
 		return this.state === state;
 	}
 
 	/** Generates Mermaid state diagram notation from FSM config */
-	toMermaid() {
+	toMermaid(): string {
 		let mermaid = "stateDiagram-v2\n";
 		mermaid += `    [*] --> ${this.config.initial}\n`;
 
