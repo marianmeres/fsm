@@ -217,30 +217,20 @@ export class FSM<
 		let mermaid = "stateDiagram-v2\n";
 		mermaid += `    [*] --> ${this.config.initial}\n`;
 
-		for (const entry of Object.entries(this.config.states)) {
-			const [stateName, stateConfig] = entry as [
-				TState,
-				FSMStatesConfigValue<TState, TTransition, TContext>
-			];
-			if (stateConfig.on) {
-				for (const entry2 of Object.entries(stateConfig.on)) {
-					const [transition, def] = entry2 as [
-						TTransition,
-						TransitionDef<TState, TContext>
-					];
-					if (typeof def === "string") {
-						mermaid += `    ${stateName} --> ${def}: ${transition}\n`;
-					} else if (Array.isArray(def)) {
-						def.forEach((t, idx) => {
-							const label = t.guard
-								? `${transition} [guard ${idx + 1}]`
-								: transition;
-							mermaid += `    ${stateName} --> ${t.target}: ${label}\n`;
-						});
-					} else if (def.target) {
-						const label = def.guard ? `${transition} [guarded]` : transition;
-						mermaid += `    ${stateName} --> ${def.target}: ${label}\n`;
-					}
+		for (const [stateName, stateConfig] of Object.entries<any>(
+			this.config.states
+		)) {
+			for (const [event, def] of Object.entries<any>(stateConfig?.on ?? {})) {
+				if (typeof def === "string") {
+					mermaid += `    ${stateName} --> ${def}: ${event}\n`;
+				} else if (Array.isArray(def)) {
+					def.forEach((t, idx) => {
+						const label = t.guard ? `${event} [guard ${idx + 1}]` : event;
+						mermaid += `    ${stateName} --> ${t.target}: ${label}\n`;
+					});
+				} else if (def.target) {
+					const label = def.guard ? `${event} [guarded]` : event;
+					mermaid += `    ${stateName} --> ${def.target}: ${label}\n`;
 				}
 			}
 		}
