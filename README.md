@@ -85,7 +85,8 @@ assertThrows(() => fsm.transition("retry"));
 // non-reactive props
 console.log(fsm.state, fsm.context);
 
-// built in mermaid helper you can easily visualize the graph (eg in https://www.mermaidchart.com/ )
+// built in mermaid helper you can easily visualize the graph 
+// (eg in https://www.mermaidchart.com/ )
 console.log(fsm.toMermaid());
 /**
 stateDiagram-v2
