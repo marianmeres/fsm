@@ -16,16 +16,6 @@ deno add jsr:@marianmeres/fsm
 npm install @marianmeres/fsm
 ```
 
-## Transition
-
-Execution order during transition:
-
-1. resolve new next state (evaluate guards), but do not change yet
-2. lifecycle hook `onExit` if exists (on OLD state)
-3. actual state change
-4. lifecycle hook `onEnter` (on NEW state)
-5. notify consumers
-
 ## Example
 
 ```typescript
@@ -86,15 +76,16 @@ const fsm = new FSM<STATES, TRANSITIONS, CONTEXT>({
 // subscribe to reactive updates
 const unsub = fsm.subscribe(({ state, context }) => log.push({ state, context }));
 
-// `transition` is the main API function
 assertEquals(fsm.is("IDLE"), true);
+
+// `transition` is the main API function
 assertEquals(fsm.transition("fetch"), "FETCHING");
 assertThrows(() => fsm.transition("retry"));
 
-// non-reactive 
+// non-reactive props
 console.log(fsm.state, fsm.context);
 
-// so you can easily visualize the graph (eg in https://www.mermaidchart.com/ )
+// built in mermaid helper you can easily visualize the graph (eg in https://www.mermaidchart.com/ )
 console.log(fsm.toMermaid());
 /**
 stateDiagram-v2
@@ -108,3 +99,5 @@ stateDiagram-v2
     FAILED --> IDLE: reset
 */
 ```
+
+![State Diagram](mermaid.png "State Diagram")
