@@ -95,7 +95,7 @@ export class FSM<
 	}
 
 	/** Non-reactive getter from the outside */
-	get state() {
+	get state(): TState {
 		return this.#state;
 	}
 
