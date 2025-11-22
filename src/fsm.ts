@@ -1,7 +1,7 @@
 import { createPubSub, type Unsubscriber } from "@marianmeres/pubsub";
 
 /** Arbitrary transition payload */
-export type FSMPayload = Record<string, any>;
+export type FSMPayload = any;
 
 /** State configuration value */
 export type FSMStatesConfigValue<
@@ -38,9 +38,9 @@ export type TransitionObj<TState, TContext> = {
 	// target is optional... if undefined, the transition will be considered as "internal"
 	// and in such case only the action will re-run
 	target?: TState;
-	guard?: (context: TContext, payload: FSMPayload) => boolean;
+	guard?: (context: TContext, payload?: FSMPayload) => boolean;
 	// action hook for edge-specific side effects
-	action?: (context: TContext, payload: FSMPayload) => void;
+	action?: (context: TContext, payload?: FSMPayload) => void;
 };
 
 /** Transition configuration definition */
@@ -78,7 +78,7 @@ export class FSM<
 	#previous: TState | null = null;
 
 	/** FSM's current state */
-	state: TState;
+	#state: TState;
 
 	/** A custom object accessible throughout the FSM's lifetime. */
 	context: TContext;
@@ -90,8 +90,13 @@ export class FSM<
 	constructor(
 		public readonly config: FSMConfig<TState, TTransition, TContext>
 	) {
-		this.state = this.config.initial;
+		this.#state = this.config.initial;
 		this.context = this.#initContext();
+	}
+
+	/** Non-reactive getter from the outside */
+	get state() {
+		return this.#state;
 	}
 
 	/** Helper to initialize context from object or factory function */
@@ -105,7 +110,7 @@ export class FSM<
 
 	#getNotifyData() {
 		return {
-			current: this.state,
+			current: this.#state,
 			previous: this.#previous,
 			context: this.context,
 		};
@@ -135,26 +140,40 @@ export class FSM<
 	 * 4. onEnter (NEW state)
 	 * 5. notify consumers
 	 */
-	transition(event: TTransition, payload?: any): TState | null {
-		const currentStateConfig = this.config.states[this.state];
+	transition(
+		event: TTransition,
+		payload?: FSMPayload,
+		assert = true
+	): TState | null {
+		const currentStateConfig = this.config.states[this.#state];
 
 		if (!currentStateConfig || !currentStateConfig.on) {
-			throw new Error(`No transitions defined for state "${this.state}"`);
+			throw new Error(`No transitions defined for state "${this.#state}"`);
 		}
 
 		const transitionDef = currentStateConfig.on[event];
 
 		if (!transitionDef) {
-			// prettier-ignore
-			throw new Error(`Invalid transition "${event}" from state "${this.state}"`);
+			if (assert) {
+				// prettier-ignore
+				throw new Error(`Invalid transition "${event}" from state "${this.#state}"`);
+			} else {
+				// just return current if non-assert mode
+				return this.#state;
+			}
 		}
 
 		// returns the full normalized transition object
 		const activeTransition = this.#resolveTransition(transitionDef, payload);
 
 		if (!activeTransition) {
-			// prettier-ignore
-			throw new Error(`No valid transition found for event "${event}" in state "${this.state}"`);
+			if (assert) {
+				// prettier-ignore
+				throw new Error(`No valid transition found for event "${event}" in state "${this.#state}"`);
+			} else {
+				// just return current if non-assert mode
+				return this.#state;
+			}
 		}
 
 		// INTERNAL TRANSITION
@@ -163,9 +182,10 @@ export class FSM<
 			if (typeof activeTransition.action === "function") {
 				activeTransition.action(this.context, payload);
 			}
-			// here we do NOT fire onExit, onEnter, or update this.#previous
-			// (we might still want to notify listeners)
-			return this.state;
+			// here we do NOT fire onExit, onEnter, or update this.#previous, BUT we
+			// notify consumers, since actions may change context
+			this.#notify();
+			return this.#state;
 		}
 
 		const nextState = activeTransition.target;
@@ -181,8 +201,8 @@ export class FSM<
 		}
 
 		// 3. save previous and set new state
-		this.#previous = this.state;
-		this.state = nextState;
+		this.#previous = this.#state;
+		this.#state = nextState;
 
 		// 4. enter new state side-effect
 		const nextStateConfig = this.config.states[nextState];
@@ -194,13 +214,13 @@ export class FSM<
 		this.#notify();
 
 		// return current
-		return this.state;
+		return this.#state;
 	}
 
 	/** Resolves the transition definition into a normalized object */
 	#resolveTransition(
 		transition: TransitionDef<TState, TContext>,
-		payload: FSMPayload
+		payload?: FSMPayload
 	): TransitionObj<TState, TContext> | null {
 		// simple string transition -> normalize to object
 		if (typeof transition === "string") {
@@ -231,7 +251,8 @@ export class FSM<
 
 	/** Resets the FSM to initial state and re-initializes context */
 	reset(): FSM<TState, TTransition, TContext> {
-		this.state = this.config.initial;
+		this.#state = this.config.initial;
+		this.#previous = null;
 		this.context = this.#initContext();
 		this.#notify();
 		return this;
@@ -239,7 +260,7 @@ export class FSM<
 
 	/** Check whether the FSM is in the given state */
 	is(state: TState): boolean {
-		return this.state === state;
+		return this.#state === state;
 	}
 
 	/** Generates Mermaid state diagram notation from FSM config */
