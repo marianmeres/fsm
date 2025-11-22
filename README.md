@@ -80,6 +80,8 @@ assertEquals(fsm.is("IDLE"), true);
 
 // `transition` is the main API function
 assertEquals(fsm.transition("fetch"), "FETCHING");
+
+// this must throw - cannot "retry" from "FETCHING"
 assertThrows(() => fsm.transition("retry"));
 
 // non-reactive props
