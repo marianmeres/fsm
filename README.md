@@ -47,7 +47,9 @@ const fsm = new FSM<STATES, TRANSITIONS, CONTEXT>({
                         target: "RETRYING",
                         guard: (ctx) => ctx.attempts < ctx.maxRetries,
                         // Action executes specifically on this transition edge
-                        action: (ctx) => console.log(`Attempt ${ctx.attempts} failed, retrying...`),
+                        action: (ctx) => {
+                            console.log(`Attempt ${ctx.attempts} failed...`)
+                        },
                     },
                     {
                         target: "FAILED",
