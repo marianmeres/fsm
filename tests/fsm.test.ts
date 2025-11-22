@@ -60,6 +60,8 @@ Deno.test("fetch retry definition", () => {
 		error: any;
 	};
 
+	const log: string[] = [];
+
 	const fsm = new FSM<STATES, TRANSITIONS, CONTEXT>({
 		initial: "IDLE",
 		context: {
@@ -83,6 +85,10 @@ Deno.test("fetch retry definition", () => {
 						{
 							target: "RETRYING",
 							guard: (ctx) => ctx.attempts < ctx.maxRetries,
+							// Action executes specifically on this transition edge
+							action: (ctx) => {
+								log.push(`Attempt ${ctx.attempts} failed, retrying...`);
+							},
 						},
 						{
 							target: "FAILED",
@@ -115,7 +121,7 @@ Deno.test("fetch retry definition", () => {
     [*] --> IDLE
     IDLE --> FETCHING: fetch
     FETCHING --> SUCCESS: resolve
-    FETCHING --> RETRYING: reject [guard 1]
+    FETCHING --> RETRYING: reject [guard 1] / (action)
     FETCHING --> FAILED: reject [guard 2]
     RETRYING --> FETCHING: retry
     SUCCESS --> IDLE: reset
@@ -128,6 +134,8 @@ Deno.test("fetch retry definition", () => {
 	assertEquals(fsm.transition("fetch"), "FETCHING");
 	assertEquals(fsm.transition("reject"), "RETRYING");
 	assertEquals(fsm.transition("retry"), "FETCHING");
+
+	assertEquals(log, ["Attempt 1 failed, retrying..."]);
 
 	// now must not be retrying anymore as the max retry 2 count was reached
 	assertEquals(fsm.transition("reject", "some error"), "FAILED");
@@ -150,4 +158,70 @@ Deno.test("fetch retry definition", () => {
 	//
 	assertEquals(fsm.context.attempts, 1);
 	assertEquals(fsm.context.data, { foo: "bar" });
+});
+
+Deno.test("internal action (no target)", () => {
+	type STATES = "PLAYING" | "PAUSED";
+	type TRANSITIONS = "pause" | "volume_up";
+	type CONTEXT = { volume: number };
+
+	const log: string[] = [];
+
+	const fsm = new FSM<STATES, TRANSITIONS, CONTEXT>({
+		initial: "PLAYING",
+		context: { volume: 5 },
+		states: {
+			PLAYING: {
+				onEnter: () => log.push("enter:PLAYING"),
+				onExit: () => log.push("exit:PLAYING"),
+				on: {
+					pause: "PAUSED",
+					// internal transition: No 'target' defined
+					volume_up: {
+						action: (ctx) => {
+							ctx.volume += 1;
+							log.push(`volume:${ctx.volume}`);
+						},
+					},
+				},
+			},
+			PAUSED: {
+				on: {
+					// external transition (re-entry): explicit 'target' defined
+					// this SHOULD trigger exit/enter hooks
+					volume_up: {
+						target: "PAUSED",
+						action: (ctx) => {
+							ctx.volume += 1;
+							log.push(`volume:${ctx.volume}`);
+						},
+					},
+				},
+			},
+		},
+	});
+
+	// 1. internal transition (PLAYING)
+	// action must run, but NO enter/exit logs
+	assertEquals(fsm.transition("volume_up"), "PLAYING");
+	assertEquals(fsm.context.volume, 6);
+	assertEquals(log, ["volume:6"]);
+
+	// 2. switch state to verify standard behavior
+	fsm.transition("pause");
+	assertEquals(fsm.state, "PAUSED");
+	log.length = 0; // clear log
+
+	// 3. external self-transition (PAUSED)
+	// action must run, AND enter/exit logs run (because target is explicit)
+	assertEquals(fsm.transition("volume_up"), "PAUSED");
+	assertEquals(fsm.context.volume, 7);
+	assertEquals(log, ["volume:7"]);
+
+	//
+	const mermaid = fsm.toMermaid();
+	assertEquals(
+		mermaid.includes("PLAYING --> PLAYING: volume_up / (action internal)"),
+		true
+	);
 });

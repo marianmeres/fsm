@@ -29,13 +29,18 @@ export type FSMConfig<
 > = {
 	initial: TState;
 	states: FSMStatesConfigMap<TState, TTransition, TContext>;
-	context?: TContext;
+	// accepts a value OR a factory function for true resets
+	context?: TContext | (() => TContext);
 };
 
 /** Transition configuration object  */
 export type TransitionObj<TState, TContext> = {
-	target: TState;
+	// target is optional... if undefined, the transition will be considered as "internal"
+	// and in such case only the action will re-run
+	target?: TState;
 	guard?: (context: TContext, payload: FSMPayload) => boolean;
+	// action hook for edge-specific side effects
+	action?: (context: TContext, payload: FSMPayload) => void;
 };
 
 /** Transition configuration definition */
@@ -75,8 +80,7 @@ export class FSM<
 	/** FSM's current state */
 	state: TState;
 
-	/** A custom object accessible throughout the FSM's lifetime, containing arbitrary
-	 * data that can be read and modified.*/
+	/** A custom object accessible throughout the FSM's lifetime. */
 	context: TContext;
 
 	/** Internal pub sub */
@@ -87,7 +91,16 @@ export class FSM<
 		public readonly config: FSMConfig<TState, TTransition, TContext>
 	) {
 		this.state = this.config.initial;
-		this.context = { ...(this.config.context ?? ({} as TContext)) };
+		this.context = this.#initContext();
+	}
+
+	/** Helper to initialize context from object or factory function */
+	#initContext(): TContext {
+		if (typeof this.config.context === "function") {
+			return (this.config.context as () => TContext)();
+		}
+		// fallback to shallow copy if a static object is passed
+		return { ...(this.config.context ?? ({} as TContext)) };
 	}
 
 	#getNotifyData() {
@@ -113,14 +126,14 @@ export class FSM<
 
 	/**
 	 * "Requests" FSM to transition to target state providing payload and respecting
-	 * the configuration. Guards and side effects, if defined,
-	 * will be synchronously evaluated and executed.
+	 * the configuration.
 	 *
 	 * Execution order during transition:
-	 *  1. onExit (OLD state)
-	 *  2. state changes
-	 *  3. onEnter (NEW state) - initialize, prepare
-	 *  5. notify consumers
+	 * 1. onExit (OLD state)
+	 * 2. action (TRANSITION edge)
+	 * 3. state changes
+	 * 4. onEnter (NEW state)
+	 * 5. notify consumers
 	 */
 	transition(event: TTransition, payload?: any): TState | null {
 		const currentStateConfig = this.config.states[this.state];
@@ -129,59 +142,79 @@ export class FSM<
 			throw new Error(`No transitions defined for state "${this.state}"`);
 		}
 
-		const transition = currentStateConfig.on[event];
+		const transitionDef = currentStateConfig.on[event];
 
-		if (!transition) {
+		if (!transitionDef) {
 			// prettier-ignore
 			throw new Error(`Invalid transition "${event}" from state "${this.state}"`);
 		}
 
-		const nextState = this.#resolveTransition(transition, payload);
+		// returns the full normalized transition object
+		const activeTransition = this.#resolveTransition(transitionDef, payload);
 
-		if (!nextState) {
+		if (!activeTransition) {
 			// prettier-ignore
 			throw new Error(`No valid transition found for event "${event}" in state "${this.state}"`);
 		}
+
+		// INTERNAL TRANSITION
+		// if there is no target, we stay in the same state and ONLY run the action.
+		if (!activeTransition.target) {
+			if (typeof activeTransition.action === "function") {
+				activeTransition.action(this.context, payload);
+			}
+			// here we do NOT fire onExit, onEnter, or update this.#previous
+			// (we might still want to notify listeners)
+			return this.state;
+		}
+
+		const nextState = activeTransition.target;
 
 		// 1. exit current state side-effect
 		if (typeof currentStateConfig.onExit === "function") {
 			currentStateConfig.onExit(this.context, payload);
 		}
 
-		// 2. save previous and set new state
+		// 2. execute transition action (if defined)
+		if (typeof activeTransition.action === "function") {
+			activeTransition.action(this.context, payload);
+		}
+
+		// 3. save previous and set new state
 		this.#previous = this.state;
 		this.state = nextState;
 
-		// 3. enter new state side-effect
+		// 4. enter new state side-effect
 		const nextStateConfig = this.config.states[nextState];
 		if (typeof nextStateConfig.onEnter === "function") {
 			nextStateConfig.onEnter(this.context, payload);
 		}
 
-		// 4. notify listeners
+		// 5. notify listeners
 		this.#notify();
 
 		// return current
 		return this.state;
 	}
 
-	/**
-	 *
-	 */
+	/** Resolves the transition definition into a normalized object */
 	#resolveTransition(
 		transition: TransitionDef<TState, TContext>,
 		payload: FSMPayload
-	): TState | null {
-		// simple string transition
+	): TransitionObj<TState, TContext> | null {
+		// simple string transition -> normalize to object
 		if (typeof transition === "string") {
-			return transition;
+			return { target: transition };
 		}
 
 		// array of guarded transitions
 		if (Array.isArray(transition)) {
 			for (const t of transition) {
-				if (typeof t.guard === "function" && t.guard(this.context, payload)) {
-					return t.target;
+				if (typeof t.guard === "function") {
+					if (t.guard(this.context, payload)) return t;
+				} else {
+					// If no guard is present in an array item, it's an unconditional match
+					return t;
 				}
 			}
 			return null;
@@ -189,18 +222,17 @@ export class FSM<
 
 		// single guarded transition object
 		if (typeof transition.guard === "function") {
-			return transition.guard(this.context, payload) ? transition.target : null;
+			return transition.guard(this.context, payload) ? transition : null;
 		}
 
-		return transition.target;
+		// single object without guard
+		return transition;
 	}
 
-	/**
-	 *
-	 */
+	/** Resets the FSM to initial state and re-initializes context */
 	reset(): FSM<TState, TTransition, TContext> {
 		this.state = this.config.initial;
-		this.context = { ...(this.config.context ?? ({} as TContext)) };
+		this.context = this.#initContext();
 		this.#notify();
 		return this;
 	}
@@ -219,16 +251,50 @@ export class FSM<
 			this.config.states
 		)) {
 			for (const [event, def] of Object.entries<any>(stateConfig?.on ?? {})) {
+				// Helper to format the label: "Event [Guard] / Action"
+				const formatLabel = (
+					evt: string,
+					guardIdx: number | null,
+					hasAction: boolean,
+					isInternal: boolean
+				) => {
+					let label = evt;
+					if (guardIdx !== null) label += ` [guard ${guardIdx}]`;
+					else if (guardIdx === -1) label += ` [guarded]`;
+
+					// UML convention: Event [Guard] / Action
+					if (hasAction) {
+						if (isInternal) {
+							// mark internal transitions explicitly
+							label += ` / (action internal)`;
+						} else {
+							label += ` / (action)`;
+						}
+					}
+
+					return label;
+				};
+
 				if (typeof def === "string") {
+					// simple string: "TARGET"
 					mermaid += `    ${stateName} --> ${def}: ${event}\n`;
 				} else if (Array.isArray(def)) {
+					// array of objects
 					def.forEach((t, idx) => {
-						const label = t.guard ? `${event} [guard ${idx + 1}]` : event;
-						mermaid += `    ${stateName} --> ${t.target}: ${label}\n`;
+						const target = t.target ?? stateName;
+						const label = formatLabel(event, idx + 1, !!t.action, !t.target);
+						mermaid += `    ${stateName} --> ${target}: ${label}\n`;
 					});
-				} else if (def.target) {
-					const label = def.guard ? `${event} [guarded]` : event;
-					mermaid += `    ${stateName} --> ${def.target}: ${label}\n`;
+				} else {
+					// single object
+					const target = def.target ?? stateName;
+					const label = formatLabel(
+						event,
+						def.guard ? -1 : null,
+						!!def.action,
+						!def.target
+					);
+					mermaid += `    ${stateName} --> ${target}: ${label}\n`;
 				}
 			}
 		}
