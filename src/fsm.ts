@@ -126,23 +126,21 @@ export class FSM<
 		const currentStateConfig = this.config.states[this.state];
 
 		if (!currentStateConfig || !currentStateConfig.on) {
-			throw new Error(
-				`No transitions defined for state "${String(this.state)}"`
-			);
+			throw new Error(`No transitions defined for state "${this.state}"`);
 		}
 
 		const transition = currentStateConfig.on[event];
 
 		if (!transition) {
 			// prettier-ignore
-			throw new Error(`Invalid transition "${String(event)}" from state "${String(this.state)}"`);
+			throw new Error(`Invalid transition "${event}" from state "${this.state}"`);
 		}
 
 		const nextState = this.#resolveTransition(transition, payload);
 
 		if (!nextState) {
 			// prettier-ignore
-			throw new Error(`No valid transition found for event "${String(event)}" in state "${String(this.state)}"`);
+			throw new Error(`No valid transition found for event "${event}" in state "${this.state}"`);
 		}
 
 		// 1. exit current state side-effect

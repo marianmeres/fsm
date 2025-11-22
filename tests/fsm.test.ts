@@ -10,6 +10,8 @@ Deno.test("basic", () => {
 	const fsm = createFsm<STATES, TRANSITIONS>({
 		initial: "OFF",
 		states: {
+			// in this example we have a little naming confusion:
+			// "ON" as state name and "on" as conventional property for transition definitions
 			ON: {
 				on: { stop: "OFF" },
 			},
