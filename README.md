@@ -129,13 +129,73 @@ const fsm = new FSM({
             on: {
                 // External: triggers onExit -> Action -> onEnter
                 restart: { target: 'PLAYING' },
-                
+
                 // Internal: triggers action ONLY (no exit/enter logs)
-                volumeUp: { 
-                    action: (ctx) => ctx.volume += 1 
-                } 
+                volumeUp: {
+                    action: (ctx) => ctx.volume += 1
+                }
             }
         }
     }
 });
+```
+
+## Wildcard Transitions
+
+Use the wildcard `"*"` to define a fallback transition that catches any event not explicitly defined. Specific transitions always take priority over wildcards.
+
+```typescript
+const fsm = new FSM({
+    initial: "IDLE",
+    states: {
+        ACTIVE: {
+            on: {
+                stop: "IDLE",      // specific transition takes priority
+                "*": "ERROR"        // wildcard catches everything else
+            }
+        },
+        ERROR: {
+            on: {
+                "*": "IDLE"         // any event returns to IDLE
+            }
+        }
+    }
+});
+
+fsm.transition("stop");      // → IDLE (specific)
+fsm.transition("crash");     // → ERROR (wildcard)
+fsm.transition("anything");  // → IDLE (wildcard)
+
+// Mermaid diagrams show wildcards as "* (any)"
+console.log(fsm.toMermaid());
+// Output includes: "ACTIVE --> ERROR: * (any)"
+```
+
+Wildcards support all transition features including guards and actions:
+
+```typescript
+{
+    on: {
+        "*": {
+            target: "ERROR",
+            guard: (ctx) => ctx.errorCount < 3,
+            action: (ctx) => ctx.errorCount++
+        }
+    }
+}
+```
+
+## Checking Transition Validity
+
+Use `canTransition()` to check if a transition is valid without executing it. This respects guards and wildcard rules.
+
+```typescript
+if (fsm.canTransition("submit")) {
+    fsm.transition("submit");
+} else {
+    console.log("Submit not available in current state");
+}
+
+// Works with guarded transitions
+const canRetry = fsm.canTransition("retry", payload);
 ```

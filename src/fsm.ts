@@ -10,7 +10,7 @@ export type FSMStatesConfigValue<
 	TContext
 > = {
 	onEnter?: (context: TContext, payload?: FSMPayload) => void;
-	on: Partial<Record<TTransition, TransitionDef<TState, TContext>>>;
+	on: Partial<Record<TTransition | "*", TransitionDef<TState, TContext>>>;
 	onExit?: (context: TContext, payload?: FSMPayload) => void;
 };
 
@@ -151,15 +151,21 @@ export class FSM<
 			throw new Error(`No transitions defined for state "${this.#state}"`);
 		}
 
-		const transitionDef = currentStateConfig.on[event];
+		// Try the specific event first, then fall back to wildcard "*"
+		let transitionDef = currentStateConfig.on[event];
 
 		if (!transitionDef) {
-			if (assert) {
-				// prettier-ignore
-				throw new Error(`Invalid transition "${event}" from state "${this.#state}"`);
-			} else {
-				// just return current if non-assert mode
-				return this.#state;
+			// Try wildcard transition as fallback
+			transitionDef = currentStateConfig.on["*" as TTransition];
+
+			if (!transitionDef) {
+				if (assert) {
+					// prettier-ignore
+					throw new Error(`Invalid transition "${event}" from state "${this.#state}"`);
+				} else {
+					// just return current if non-assert mode
+					return this.#state;
+				}
 			}
 		}
 
@@ -263,6 +269,36 @@ export class FSM<
 		return this.#state === state;
 	}
 
+	/**
+	 * Check whether a transition is valid from the current state.
+	 * Returns true if the transition can be executed, false otherwise.
+	 * Respects guards and transition definitions.
+	 */
+	canTransition(event: TTransition, payload?: FSMPayload): boolean {
+		const currentStateConfig = this.config.states[this.#state];
+
+		if (!currentStateConfig || !currentStateConfig.on) {
+			return false;
+		}
+
+		// Try the specific event first, then fall back to wildcard "*"
+		let transitionDef = currentStateConfig.on[event];
+
+		if (!transitionDef) {
+			// Try wildcard transition as fallback
+			transitionDef = currentStateConfig.on["*" as TTransition];
+
+			if (!transitionDef) {
+				return false;
+			}
+		}
+
+		// Check if transition resolves to a valid target
+		const activeTransition = this.#resolveTransition(transitionDef, payload);
+
+		return activeTransition !== null;
+	}
+
 	/** Generates Mermaid state diagram notation from FSM config */
 	toMermaid(): string {
 		let mermaid = "stateDiagram-v2\n";
@@ -279,7 +315,8 @@ export class FSM<
 					hasAction: boolean,
 					isInternal: boolean
 				) => {
-					let label = evt;
+					// Make wildcard more descriptive in the diagram
+					let label = evt === "*" ? "* (any)" : evt;
 					if (guardIdx !== null) label += ` [guard ${guardIdx}]`;
 					else if (guardIdx === -1) label += ` [guarded]`;
 
@@ -298,7 +335,8 @@ export class FSM<
 
 				if (typeof def === "string") {
 					// simple string: "TARGET"
-					mermaid += `    ${stateName} --> ${def}: ${event}\n`;
+					const label = event === "*" ? "* (any)" : event;
+					mermaid += `    ${stateName} --> ${def}: ${label}\n`;
 				} else if (Array.isArray(def)) {
 					// array of objects
 					def.forEach((t, idx) => {

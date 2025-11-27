@@ -225,3 +225,155 @@ Deno.test("internal action (no target)", () => {
 		true
 	);
 });
+
+Deno.test("canTransition method", () => {
+	type STATES = "IDLE" | "LOADING" | "SUCCESS" | "ERROR";
+	type TRANSITIONS = "load" | "resolve" | "reject" | "reset";
+	type CONTEXT = { attempts: number };
+
+	const fsm = new FSM<STATES, TRANSITIONS, CONTEXT>({
+		initial: "IDLE",
+		context: { attempts: 0 },
+		states: {
+			IDLE: {
+				on: { load: "LOADING" },
+			},
+			LOADING: {
+				on: {
+					resolve: "SUCCESS",
+					// guarded transition
+					reject: [
+						{
+							target: "ERROR",
+							guard: (ctx) => ctx.attempts < 3,
+						},
+						{
+							target: "IDLE",
+							guard: (ctx) => ctx.attempts >= 3,
+						},
+					],
+				},
+			},
+			SUCCESS: {
+				on: { reset: "IDLE" },
+			},
+			ERROR: {
+				on: { reset: "IDLE" },
+			},
+		},
+	});
+
+	// Check valid transitions
+	assertEquals(fsm.is("IDLE"), true);
+	assertEquals(fsm.canTransition("load"), true);
+	assertEquals(fsm.canTransition("resolve"), false);
+	assertEquals(fsm.canTransition("reject"), false);
+
+	// Move to LOADING state
+	fsm.transition("load");
+	assertEquals(fsm.is("LOADING"), true);
+	assertEquals(fsm.canTransition("load"), false);
+	assertEquals(fsm.canTransition("resolve"), true);
+	assertEquals(fsm.canTransition("reject"), true); // first guard passes
+
+	// Test guard evaluation with payload
+	fsm.context.attempts = 3;
+	assertEquals(fsm.canTransition("reject"), true); // second guard passes
+
+	fsm.context.attempts = 10;
+	assertEquals(fsm.canTransition("reject"), true); // second guard still passes
+});
+
+Deno.test("wildcard transitions", () => {
+	type STATES = "IDLE" | "ACTIVE" | "ERROR";
+	type TRANSITIONS = "start" | "stop" | "crash" | "unknown";
+
+	const log: string[] = [];
+
+	const fsm = new FSM<STATES, TRANSITIONS>({
+		initial: "IDLE",
+		states: {
+			IDLE: {
+				on: {
+					start: "ACTIVE",
+				},
+			},
+			ACTIVE: {
+				onExit: () => log.push("exit:ACTIVE"),
+				on: {
+					stop: "IDLE",
+					// Wildcard catches any other transition
+					"*": {
+						target: "ERROR",
+						action: () => log.push("wildcard triggered"),
+					},
+				},
+			},
+			ERROR: {
+				on: {
+					"*": "IDLE", // simple wildcard to IDLE
+				},
+			},
+		},
+	});
+
+	assertEquals(fsm.is("IDLE"), true);
+
+	// Normal transition
+	fsm.transition("start");
+	assertEquals(fsm.is("ACTIVE"), true);
+
+	// Wildcard catches "crash" which isn't explicitly defined
+	fsm.transition("crash");
+	assertEquals(fsm.is("ERROR"), true);
+	assertEquals(log, ["exit:ACTIVE", "wildcard triggered"]);
+
+	// Wildcard in ERROR state catches anything
+	fsm.transition("unknown");
+	assertEquals(fsm.is("IDLE"), true);
+
+	// Specific transitions take priority over wildcard
+	fsm.transition("start");
+	assertEquals(fsm.is("ACTIVE"), true);
+	fsm.transition("stop"); // specific "stop" transition
+	assertEquals(fsm.is("IDLE"), true);
+
+	// Check mermaid output shows wildcard properly
+	const mermaid = fsm.toMermaid();
+	assertEquals(mermaid.includes("* (any)"), true);
+	assertEquals(mermaid.includes('ACTIVE --> ERROR: * (any) / (action)'), true);
+	assertEquals(mermaid.includes('ERROR --> IDLE: * (any)'), true);
+});
+
+Deno.test("canTransition with wildcards", () => {
+	type STATES = "A" | "B";
+	type TRANSITIONS = "go" | "anything";
+
+	const fsm = new FSM<STATES, TRANSITIONS>({
+		initial: "A",
+		states: {
+			A: {
+				on: {
+					go: "B",
+				},
+			},
+			B: {
+				on: {
+					"*": "A",
+				},
+			},
+		},
+	});
+
+	// State A: only "go" is valid
+	assertEquals(fsm.canTransition("go"), true);
+	assertEquals(fsm.canTransition("anything"), false);
+
+	// Move to state B
+	fsm.transition("go");
+	assertEquals(fsm.is("B"), true);
+
+	// State B: wildcard catches everything
+	assertEquals(fsm.canTransition("go"), true);
+	assertEquals(fsm.canTransition("anything"), true);
+});
