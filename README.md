@@ -206,6 +206,20 @@ const canRetry = fsm.canTransition("retry", payload);
 
 **Note on Safety:** `canTransition()` is a pure query method that internally clones the context before evaluating guards. This ensures that even if a guard mistakenly mutates context, the actual FSM state remains unaffected.
 
+## Naming Conventions
+
+The following naming conventions are recommended for clarity and consistency:
+
+- **States**: `UPPERCASE` nouns describing a condition or mode
+  - Examples: `IDLE`, `LOADING`, `SUCCESS`, `ERROR`
+  - States represent "being" - what mode the system is in
+
+- **Transitions**: `lowercase` verbs describing an action or command
+  - Examples: `fetch`, `resolve`, `retry`, `reset`
+  - Transitions represent "doing" - what causes the state to change
+
+These conventions make state machines more readable by visually distinguishing states from transitions, and semantically aligning with their nature (nouns for static conditions, verbs for dynamic actions).
+
 ## Context and Guards Best Practices
 
 **Guards should be pure functions** that only read context and return a boolean. They should never mutate context.
