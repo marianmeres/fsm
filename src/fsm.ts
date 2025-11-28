@@ -21,7 +21,18 @@ export type FSMStatesConfigMap<
 	TContext
 > = Record<TState, FSMStatesConfigValue<TState, TTransition, TContext>>;
 
-/** Constructor configuration */
+/**
+ * Constructor configuration
+ *
+ * Note on Context Design:
+ * Context should be a plain data object without functions. This ensures:
+ * - Serializability (localStorage, network, debugging)
+ * - Cloneability (safe canTransition queries)
+ * - Testability (easy assertions and snapshots)
+ * - Predictability (pure data transformations)
+ *
+ * Define helper functions outside the FSM and pass context as parameters.
+ */
 export type FSMConfig<
 	TState extends string,
 	TTransition extends string,
@@ -33,12 +44,39 @@ export type FSMConfig<
 	context?: TContext | (() => TContext);
 };
 
-/** Transition configuration object  */
+/**
+ * Transition configuration object
+ *
+ * IMPORTANT - Context Design Philosophy:
+ * The context parameter should be treated as READ-ONLY in guard functions and should
+ * contain ONLY data (no functions). This ensures:
+ * - Guards remain pure predicate functions
+ * - Context can be safely cloned (e.g., for canTransition safety)
+ * - State is serializable for debugging, persistence, and time-travel
+ * - Behavior is predictable and testable
+ *
+ * Good practice:
+ *   guard: (ctx) => ctx.attempts < ctx.maxRetries  // ✅ Read-only check
+ *
+ * Bad practice:
+ *   guard: (ctx) => { ctx.attempts++; return true }  // ❌ Mutating in guard
+ *   context: { count: 0, increment: () => {} }       // ❌ Functions in context
+ *
+ * For mutations, use action hooks (action, onEnter, onExit) which are designed
+ * for side effects. For helper functions, define them outside the FSM and pass
+ * context as parameters.
+ */
 export type TransitionObj<TState, TContext> = {
 	// target is optional... if undefined, the transition will be considered as "internal"
 	// and in such case only the action will re-run
 	target?: TState;
-	guard?: (context: TContext, payload?: FSMPayload) => boolean;
+	/**
+	 * Guard function to conditionally allow a transition.
+	 * MUST be a pure function that only reads context and returns a boolean.
+	 * Do NOT mutate context in guards - use action/onEnter/onExit for mutations.
+	 * Context should contain only data (no functions) to ensure it's cloneable.
+	 */
+	guard?: (context: Readonly<TContext>, payload?: FSMPayload) => boolean;
 	// action hook for edge-specific side effects
 	action?: (context: TContext, payload?: FSMPayload) => void;
 };
@@ -228,6 +266,18 @@ export class FSM<
 		transition: TransitionDef<TState, TContext>,
 		payload?: FSMPayload
 	): TransitionObj<TState, TContext> | null {
+		return this.#resolveTransitionWithContext(transition, payload, this.context);
+	}
+
+	/**
+	 * Resolves the transition definition into a normalized object using provided context.
+	 * This allows evaluating guards against a specific context (e.g., cloned for canTransition).
+	 */
+	#resolveTransitionWithContext(
+		transition: TransitionDef<TState, TContext>,
+		payload: FSMPayload | undefined,
+		context: TContext
+	): TransitionObj<TState, TContext> | null {
 		// simple string transition -> normalize to object
 		if (typeof transition === "string") {
 			return { target: transition };
@@ -237,7 +287,7 @@ export class FSM<
 		if (Array.isArray(transition)) {
 			for (const t of transition) {
 				if (typeof t.guard === "function") {
-					if (t.guard(this.context, payload)) return t;
+					if (t.guard(context, payload)) return t;
 				} else {
 					// If no guard is present in an array item, it's an unconditional match
 					return t;
@@ -248,7 +298,7 @@ export class FSM<
 
 		// single guarded transition object
 		if (typeof transition.guard === "function") {
-			return transition.guard(this.context, payload) ? transition : null;
+			return transition.guard(context, payload) ? transition : null;
 		}
 
 		// single object without guard
@@ -273,6 +323,11 @@ export class FSM<
 	 * Check whether a transition is valid from the current state.
 	 * Returns true if the transition can be executed, false otherwise.
 	 * Respects guards and transition definitions.
+	 *
+	 * IMPORTANT: This method is a pure query operation that does not modify FSM state.
+	 * To prevent side effects from guards mutating context, this method internally
+	 * clones the context before evaluating guards. This ensures canTransition can be
+	 * called safely without affecting the FSM's actual state.
 	 */
 	canTransition(event: TTransition, payload?: FSMPayload): boolean {
 		const currentStateConfig = this.config.states[this.#state];
@@ -293,8 +348,16 @@ export class FSM<
 			}
 		}
 
-		// Check if transition resolves to a valid target
-		const activeTransition = this.#resolveTransition(transitionDef, payload);
+		// Clone context to prevent guards from mutating the actual context
+		// This makes canTransition a truly pure query method without side effects
+		const clonedContext = structuredClone(this.context);
+
+		// Check if transition resolves to a valid target using cloned context
+		const activeTransition = this.#resolveTransitionWithContext(
+			transitionDef,
+			payload,
+			clonedContext
+		);
 
 		return activeTransition !== null;
 	}
