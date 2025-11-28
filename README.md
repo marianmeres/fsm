@@ -199,3 +199,28 @@ if (fsm.canTransition("submit")) {
 // Works with guarded transitions
 const canRetry = fsm.canTransition("retry", payload);
 ```
+
+**Note on Safety:** `canTransition()` is a pure query method that internally clones the context before evaluating guards. This ensures that even if a guard mistakenly mutates context, the actual FSM state remains unaffected.
+
+## Context and Guards Best Practices
+
+**Guards should be pure functions** that only read context and return a boolean. They should never mutate context.
+
+**Context should contain only data** (no functions). This ensures:
+- Context can be safely cloned (for `canTransition` safety)
+- State is serializable (for debugging, persistence, localStorage)
+- Behavior is predictable and testable
+
+```typescript
+// ✅ Good: Pure guard, data-only context
+type Context = { attempts: number; maxRetries: number };
+guard: (ctx) => ctx.attempts < ctx.maxRetries
+
+// ❌ Bad: Mutating in guard
+guard: (ctx) => { ctx.attempts++; return true }
+
+// ❌ Bad: Functions in context
+context: { count: 0, increment: () => {} }
+```
+
+For mutations, use **action hooks** (`action`, `onEnter`, `onExit`) which are designed for side effects. For helper functions, define them outside the FSM and pass context as parameters.
