@@ -1,4 +1,5 @@
 import { createPubSub, type Unsubscriber } from "@marianmeres/pubsub";
+import { fromMermaid as fromMermaidParser } from "./from-mermaid.ts";
 
 /** Arbitrary transition payload */
 export type FSMPayload = any;
@@ -344,6 +345,28 @@ export class FSM<
 		const activeTransition = this.#resolveTransition(transitionDef, payload);
 
 		return activeTransition !== null;
+	}
+
+	/**
+	 * Creates an FSM instance from a Mermaid stateDiagram-v2 notation.
+	 * This is a static factory method that wraps the standalone fromMermaid parser.
+	 *
+	 * Limitations:
+	 * - Cannot recreate actual guard/action functions (sets them to null as placeholders)
+	 * - Cannot recreate onEnter/onExit hooks (not represented in mermaid)
+	 * - Cannot infer context structure
+	 *
+	 * Primarily useful for documentation/visualization roundtripping.
+	 */
+	static fromMermaid<
+		TState extends string = string,
+		TTransition extends string = string,
+		TContext = any
+	>(mermaidDiagram: string): FSM<TState, TTransition, TContext> {
+		const config = fromMermaidParser<TState, TTransition, TContext>(
+			mermaidDiagram
+		);
+		return new FSM<TState, TTransition, TContext>(config);
 	}
 
 	/** Generates Mermaid state diagram notation from FSM config */

@@ -92,7 +92,7 @@ assertThrows(() => fsm.transition("retry"));
 // non-reactive props
 console.log(fsm.state, fsm.context);
 
-// built-in mermaid helper so you can easily visualize the graph 
+// built-in mermaid helper so you can easily visualize the graph
 console.log(fsm.toMermaid());
 /**
 stateDiagram-v2
@@ -105,6 +105,10 @@ stateDiagram-v2
     SUCCESS --> IDLE: reset
     FAILED --> IDLE: reset
 */
+
+// parse mermaid diagram back to FSM (for documentation/visualization roundtripping)
+const fsm2 = FSM.fromMermaid(fsm.toMermaid());
+// Note: guards/actions become placeholders (null), onEnter/onExit hooks are not preserved
 ```
 
 ![State Diagram](mermaid.png "State Diagram")
