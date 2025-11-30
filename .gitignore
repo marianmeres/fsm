@@ -2,3 +2,5 @@ node_modules
 .npm-dist/
 .idea
 .DS_Store
+.claude
+

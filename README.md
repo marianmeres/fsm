@@ -245,3 +245,10 @@ context: { count: 0, increment: () => {} }
 ```
 
 For mutations, use **action hooks** (`action`, `onEnter`, `onExit`) which are designed for side effects. For helper functions, define them outside the FSM and pass context as parameters.
+
+## Package Identity
+
+- **Name:** @marianmeres/fsm
+- **Author:** Marian Meres
+- **Repository:** https://github.com/marianmeres/fsm
+- **License:** MIT

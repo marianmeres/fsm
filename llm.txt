@@ -1,0 +1,230 @@
+# @marianmeres/fsm - LLM Knowledge Base
+
+## Package Identity
+- Name: @marianmeres/fsm
+- Version: 2.5.2 (as of knowledge capture)
+- Author: Marian Meres
+- License: MIT
+- Repository: https://github.com/marianmeres/fsm
+- NPM: https://www.npmjs.com/package/@marianmeres/fsm
+- JSR: https://jsr.io/@marianmeres/fsm
+
+## Package Purpose
+A lightweight, typed, framework-agnostic, synchronous finite state machine (FSM) library. Acts as a pure state graph description that manages state transitions and enforces rules via guards, transition actions, and lifecycle hooks (onEnter/onExit). Contains no business logic by design - meant to be wrapped in application-specific logic.
+
+## Installation
+```sh
+# Deno/JSR
+deno add jsr:@marianmeres/fsm
+
+# NPM
+npm install @marianmeres/fsm
+```
+
+## Project Structure
+```
+/
+├── src/
+│   ├── mod.ts           # Main entry point, re-exports fsm.ts and from-mermaid.ts
+│   ├── fsm.ts           # Core FSM class implementation (~430 lines)
+│   └── from-mermaid.ts  # Mermaid diagram parser (~175 lines)
+├── tests/
+│   ├── fsm.test.ts           # Core FSM tests
+│   └── from-mermaid.test.ts  # Mermaid parser tests
+├── scripts/
+│   └── build-npm.ts     # NPM package build script (Deno-based)
+├── deno.json            # Deno configuration with tasks
+├── LICENSE              # MIT license
+└── README.md            # Documentation
+```
+
+## Dependencies
+- @marianmeres/pubsub: ^2.4.1 (reactive subscription system)
+- @marianmeres/clog: ^2.3.3 (logging utility, used in build script)
+- @std/assert, @std/collections, @std/fs, @std/path (Deno standard library for dev/build)
+
+## Core API
+
+### Main Exports (from mod.ts)
+- `FSM` - Main class for creating state machines
+- `createFsm` - Factory function (alias for `new FSM`)
+- `fromMermaid` - Standalone parser for Mermaid diagrams to FSM config
+
+### FSM Constructor
+```typescript
+new FSM<TState, TTransition, TContext>(config: FSMConfig)
+```
+
+Config structure:
+```typescript
+{
+  initial: TState;                    // Initial state name
+  context?: TContext | (() => TContext);  // Data context (value or factory)
+  states: {
+    [state: TState]: {
+      onEnter?: (context, payload?) => void;  // Called when entering state
+      onExit?: (context, payload?) => void;   // Called when leaving state
+      on: {
+        [transition: TTransition | "*"]: TransitionDef;
+      }
+    }
+  }
+}
+```
+
+TransitionDef can be:
+- `TState` (simple string target)
+- `{ target?: TState, guard?: (ctx, payload?) => boolean, action?: (ctx, payload?) => void }`
+- Array of the above for multiple guarded transitions
+
+### FSM Instance Methods
+- `.transition(event, payload?, assert=true)` - Execute transition, returns new state
+- `.canTransition(event, payload?)` - Check if transition is valid (pure query)
+- `.subscribe(callback)` - Subscribe to state changes, returns unsubscribe function
+- `.is(state)` - Check if FSM is in given state
+- `.reset()` - Reset to initial state and re-initialize context
+- `.toMermaid()` - Generate Mermaid stateDiagram-v2 notation
+
+### FSM Instance Properties
+- `.state` - Current state (read-only)
+- `.context` - Context object (mutable via hooks/actions)
+- `.config` - Original config (read-only)
+
+### Static Methods
+- `FSM.fromMermaid(diagram)` - Create FSM from Mermaid diagram
+
+## Key Concepts
+
+### Transition Lifecycle Order
+1. `onExit` (current state)
+2. `action` (transition edge)
+3. State changes
+4. `onEnter` (new state)
+5. Notify subscribers
+
+### Internal vs External Transitions
+- External (has target): Executes full lifecycle (onExit → action → onEnter)
+- Internal (no target): Executes only action, no state change or lifecycle hooks
+
+### Wildcard Transitions
+Use `"*"` as transition name to catch any event not explicitly defined. Specific transitions take priority.
+
+### Guard Functions
+- Pure functions that return boolean
+- Evaluated against cloned context (structuredClone) for safety
+- Should NOT mutate context
+
+### Context Best Practices
+- Use factory function for fresh context on reset()
+- Should contain only data (no functions) for serializability
+- Mutations belong in action/onEnter/onExit hooks, not guards
+
+## Naming Conventions (Recommended)
+- States: UPPERCASE nouns (IDLE, LOADING, SUCCESS, ERROR)
+- Transitions: lowercase verbs (fetch, resolve, retry, reset)
+
+## Mermaid Integration
+
+### toMermaid() Output Format
+```
+stateDiagram-v2
+    [*] --> INITIAL_STATE
+    STATE_A --> STATE_B: event
+    STATE_A --> STATE_C: event [guard N] / (action)
+    STATE_A --> STATE_A: internal / (action internal)
+    STATE_A --> STATE_B: * (any)
+```
+
+### fromMermaid() Limitations
+- Cannot recreate actual guard/action functions (sets to null as placeholders)
+- Cannot recreate onEnter/onExit hooks
+- Cannot infer context structure
+- Type information must be provided via generics
+
+## Build System
+
+### Deno Tasks (deno.json)
+- `deno task test` - Run tests in watch mode
+- `deno task npm:build` - Build NPM package to .npm-dist/
+- `deno task npm:publish` - Build and publish to NPM
+
+### NPM Build Process (scripts/build-npm.ts)
+1. Copies src/ to .npm-dist/src/
+2. Replaces .ts imports with .js
+3. Generates tsconfig.json and package.json
+4. Runs npm install and tsc
+5. Outputs ES modules with TypeScript declarations
+
+## TypeScript Types
+
+### Main Types
+```typescript
+type FSMPayload = any;
+
+type FSMConfig<TState, TTransition, TContext> = {
+  initial: TState;
+  states: FSMStatesConfigMap<TState, TTransition, TContext>;
+  context?: TContext | (() => TContext);
+};
+
+type TransitionDef<TState, TContext> =
+  | TState
+  | TransitionObj<TState, TContext>
+  | TransitionObj<TState, TContext>[];
+
+type TransitionObj<TState, TContext> = {
+  target?: TState;
+  guard?: (context: Readonly<TContext>, payload?: FSMPayload) => boolean;
+  action?: (context: TContext, payload?: FSMPayload) => void;
+};
+
+type PublishedState<TState> = {
+  current: TState;
+  previous: TState | null;
+};
+```
+
+## Test Coverage Summary
+- Basic ON/OFF state machine
+- Fetch retry pattern with guards and actions
+- Internal transitions (no target)
+- canTransition() method
+- Wildcard transitions
+- Mermaid parsing and roundtripping
+- Error handling (invalid transitions, missing header, missing initial state)
+
+## Error Handling
+- Throws on invalid transition from current state (unless assert=false)
+- Throws on no valid guard match (unless assert=false)
+- Throws on invalid Mermaid diagram format
+
+## Integration Pattern
+```typescript
+// 1. Define types
+type States = "IDLE" | "LOADING" | "SUCCESS" | "ERROR";
+type Transitions = "load" | "resolve" | "reject" | "reset";
+type Context = { data: any; error: any };
+
+// 2. Create FSM
+const fsm = new FSM<States, Transitions, Context>({
+  initial: "IDLE",
+  context: () => ({ data: null, error: null }),
+  states: { ... }
+});
+
+// 3. Subscribe to changes
+const unsub = fsm.subscribe(({ current, previous, context }) => {
+  // Update UI or trigger side effects
+});
+
+// 4. Trigger transitions
+fsm.transition("load");
+
+// 5. Check state
+if (fsm.is("LOADING")) { ... }
+if (fsm.canTransition("resolve")) { ... }
+```
+
+## Version History Highlights
+- v2.5.x: fromMermaid factory support
+- Current: Full TypeScript support, Mermaid visualization, wildcard transitions, internal transitions
