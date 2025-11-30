@@ -1,5 +1,8 @@
 # @marianmeres/fsm
 
+[![NPM version](https://img.shields.io/npm/v/@marianmeres/fsm.svg)](https://www.npmjs.com/package/@marianmeres/fsm)
+[![JSR version](https://jsr.io/badges/@marianmeres/fsm)](https://jsr.io/@marianmeres/fsm)
+
 A lightweight, typed, framework agnostic and synchronous finite state machine that acts as a pure state graph description.
 
 It manages state transitions and enforces rules via **guards**, **transition actions**, and **lifecycle hooks** (`onEnter`/`onExit`), but contains no business logic by design.

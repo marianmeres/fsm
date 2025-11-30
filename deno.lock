@@ -2,8 +2,8 @@
   "version": "5",
   "specifiers": {
     "jsr:@marianmeres/clog@^2.3.3": "2.3.3",
-    "jsr:@marianmeres/pubsub@^2.2.0": "2.2.0",
-    "jsr:@std/assert@1": "1.0.16",
+    "jsr:@marianmeres/pubsub@^2.4.1": "2.4.1",
+    "jsr:@std/assert@^1.0.16": "1.0.16",
     "jsr:@std/collections@^1.1.3": "1.1.3",
     "jsr:@std/fs@^1.0.20": "1.0.20",
     "jsr:@std/internal@^1.0.12": "1.0.12",
@@ -13,8 +13,8 @@
     "@marianmeres/clog@2.3.3": {
       "integrity": "37780f272c28a89aa1c067b27f1234d6f9f109c0b851a49bf7eeeeb44efcedfc"
     },
-    "@marianmeres/pubsub@2.2.0": {
-      "integrity": "7edf68b6ea2aac8cbfb1c253c60a21917e2d296c6ec21c88a40b5a03d70875ad"
+    "@marianmeres/pubsub@2.4.1": {
+      "integrity": "346d89300f26bfeec7a8cc48f919efe983805ddc72e306f1bb80bbe59f937b78"
     },
     "@std/assert@1.0.16": {
       "integrity": "6a7272ed1eaa77defe76e5ff63ca705d9c495077e2d5fd0126d2b53fc5bd6532",
@@ -45,8 +45,8 @@
   "workspace": {
     "dependencies": [
       "jsr:@marianmeres/clog@^2.3.3",
-      "jsr:@marianmeres/pubsub@^2.2.0",
-      "jsr:@std/assert@1",
+      "jsr:@marianmeres/pubsub@^2.4.1",
+      "jsr:@std/assert@^1.0.16",
       "jsr:@std/collections@^1.1.3",
       "jsr:@std/fs@^1.0.20",
       "jsr:@std/path@^1.1.3"
