@@ -138,6 +138,7 @@ The parser gracefully ignores non-FSM Mermaid syntax, allowing visually annotate
 
 | Ignored Feature | Example |
 |-----------------|---------|
+| YAML frontmatter | `---\nconfig: ...\n---` |
 | Comments | `%% comment` or `%%{ directive }%%` |
 | Direction | `direction LR`, `direction TB` |
 | Styling | `classDef`, `class`, `style` |

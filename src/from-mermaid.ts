@@ -15,6 +15,7 @@ import type { FSMConfig, TransitionObj } from "./fsm.ts";
  * - `event [guard N] / (action)` - Guarded transition with action
  *
  * **Ignored Mermaid features (non-FSM lines):**
+ * - YAML frontmatter (`---\nconfig: ...\n---`)
  * - Comments (`%%`)
  * - Directives (`%%{...}%%`)
  * - Styling (`classDef`, `class`, `style`)
@@ -56,10 +57,15 @@ export function fromMermaid<
 >(mermaidDiagram: string): FSMConfig<TState, TTransition, TContext> {
 	const lines = mermaidDiagram.trim().split("\n");
 
-	// Validate header
-	if (!lines[0]?.trim().startsWith("stateDiagram-v2")) {
+	// Find the stateDiagram-v2 header, skipping any YAML frontmatter
+	// (e.g., ---\nconfig:\n  layout: elk\n---\nstateDiagram-v2)
+	let startIndex = lines.findIndex((line) =>
+		line.trim().startsWith("stateDiagram-v2")
+	);
+
+	if (startIndex === -1) {
 		throw new Error(
-			'Invalid mermaid diagram: must start with "stateDiagram-v2"'
+			'Invalid mermaid diagram: must contain "stateDiagram-v2"'
 		);
 	}
 
@@ -69,7 +75,7 @@ export function fromMermaid<
 		Map<TTransition, Array<TransitionObj<TState, TContext>>>
 	>();
 
-	for (let i = 1; i < lines.length; i++) {
+	for (let i = startIndex + 1; i < lines.length; i++) {
 		const line = lines[i].trim();
 
 		// Skip empty lines

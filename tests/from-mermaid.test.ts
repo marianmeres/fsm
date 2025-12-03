@@ -125,7 +125,7 @@ Deno.test("invalid: missing header", () => {
 	assertThrows(
 		() => fromMermaid(mermaid),
 		Error,
-		'must start with "stateDiagram-v2"'
+		'must contain "stateDiagram-v2"'
 	);
 });
 
@@ -290,6 +290,24 @@ Deno.test("roundtrip with internal transitions", () => {
 // =============================================================================
 // Tests for ignoring non-FSM Mermaid features
 // =============================================================================
+
+Deno.test("ignores YAML frontmatter", () => {
+	const mermaid = `---
+config:
+  layout: elk
+  look: neo
+---
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> ACTIVE: start
+    ACTIVE --> IDLE: stop
+`;
+
+	const config = fromMermaid(mermaid);
+	assertEquals(config.initial, "IDLE");
+	assertEquals(config.states.IDLE.on.start, "ACTIVE");
+	assertEquals(config.states.ACTIVE.on.stop, "IDLE");
+});
 
 Deno.test("ignores comments", () => {
 	const mermaid = `stateDiagram-v2

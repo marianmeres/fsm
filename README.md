@@ -188,7 +188,7 @@ stateDiagram-v2
 `);
 ```
 
-Comments (`%%`), styling (`classDef`, `class`), notes, directions, and state aliases are gracefully ignored during parsing, extracting only the structural information needed to build the FSM.
+YAML frontmatter, comments (`%%`), styling (`classDef`, `class`), notes, directions, and state aliases are gracefully ignored during parsing, extracting only the structural information needed to build the FSM.
 
 ## Transitions
 

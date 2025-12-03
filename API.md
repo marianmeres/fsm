@@ -315,6 +315,7 @@ Parses a Mermaid stateDiagram-v2 notation into an FSM configuration object. This
 - `event [guard N] / (action)` - Guarded transition with action
 
 **Ignored Mermaid features (non-FSM lines):**
+- YAML frontmatter (`---\nconfig: ...\n---`)
 - Comments (`%%` and `%%{...}%%` directives)
 - Direction statements (`direction LR`, `direction TB`, etc.)
 - Styling (`classDef`, `class`, `style`)
