@@ -272,10 +272,3 @@ For mutations, use **action hooks** (`action`, `onEnter`, `onExit`) which are de
 ## API Reference
 
 For complete API documentation including all types, methods, and detailed parameter descriptions, see [API.md](API.md).
-
-## Package Identity
-
-- **Name:** @marianmeres/fsm
-- **Author:** Marian Meres
-- **Repository:** https://github.com/marianmeres/fsm
-- **License:** MIT
