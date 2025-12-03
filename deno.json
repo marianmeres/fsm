@@ -1,6 +1,6 @@
 {
 	"name": "@marianmeres/fsm",
-	"version": "2.5.3",
+	"version": "2.5.4",
 	"exports": "./src/mod.ts",
 	"tasks": {
 		"test": "deno test --watch",
