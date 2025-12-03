@@ -132,6 +132,23 @@ Wildcard            → * (any)
 - Context structure not inferred
 - Type information requires explicit generics
 
+### Ignored Mermaid Features (fromMermaid)
+
+The parser gracefully ignores non-FSM Mermaid syntax, allowing visually annotated diagrams:
+
+| Ignored Feature | Example |
+|-----------------|---------|
+| Comments | `%% comment` or `%%{ directive }%%` |
+| Direction | `direction LR`, `direction TB` |
+| Styling | `classDef`, `class`, `style` |
+| State descriptions | `state "Label" as STATE` |
+| Composite braces | `state NAME {` and `}` |
+| Notes | `note left of STATE: text` |
+| Final state | `STATE --> [*]` |
+| Unknown lines | Any unrecognized syntax |
+
+Note: Transitions inside composite state blocks ARE parsed as regular transitions.
+
 ## Dependencies
 
 | Package | Purpose |

@@ -314,6 +314,18 @@ Parses a Mermaid stateDiagram-v2 notation into an FSM configuration object. This
 - `event / (action internal)` - Internal transition (no state change)
 - `event [guard N] / (action)` - Guarded transition with action
 
+**Ignored Mermaid features (non-FSM lines):**
+- Comments (`%%` and `%%{...}%%` directives)
+- Direction statements (`direction LR`, `direction TB`, etc.)
+- Styling (`classDef`, `class`, `style`)
+- State descriptions (`state "Description" as StateName`)
+- Composite state braces (`state StateName {` and `}`)
+- Notes (`note left of`, `note right of`, etc.)
+- Final state transitions (`StateName --> [*]`)
+- Any other unrecognized lines (silently ignored)
+
+This allows you to edit diagrams visually with colors, comments, and annotations without breaking the parser.
+
 **Throws:** Error if the diagram is invalid (missing header or initial state).
 
 **Example:**

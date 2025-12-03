@@ -14,6 +14,17 @@ import type { FSMConfig, TransitionObj } from "./fsm.ts";
  * - `event / (action internal)` - Internal transition (no state change)
  * - `event [guard N] / (action)` - Guarded transition with action
  *
+ * **Ignored Mermaid features (non-FSM lines):**
+ * - Comments (`%%`)
+ * - Directives (`%%{...}%%`)
+ * - Styling (`classDef`, `class`, `style`)
+ * - State descriptions (`state "Description" as StateName`)
+ * - Composite states / subgraphs (`state StateName { ... }`)
+ * - Notes (`note left of`, `note right of`)
+ * - Final state transitions (`StateName --> [*]`)
+ * - Direction statements (`direction LR`, `direction TB`, etc.)
+ * - Any other unrecognized lines
+ *
  * **Limitations:**
  * - Cannot recreate actual guard/action functions (sets them to `null` as placeholders)
  * - Cannot recreate `onEnter`/`onExit` hooks (not represented in Mermaid)
@@ -60,7 +71,30 @@ export function fromMermaid<
 
 	for (let i = 1; i < lines.length; i++) {
 		const line = lines[i].trim();
+
+		// Skip empty lines
 		if (!line) continue;
+
+		// Skip comments (both %% comment and %%{ directive }%%)
+		if (line.startsWith("%%")) continue;
+
+		// Skip direction statements (direction LR, direction TB, etc.)
+		if (line.startsWith("direction ")) continue;
+
+		// Skip styling: classDef, class, style
+		if (/^(classDef|class|style)\s/.test(line)) continue;
+
+		// Skip state descriptions: state "Description" as StateName
+		if (/^state\s+["']/.test(line)) continue;
+
+		// Skip composite state definitions: state StateName { or just {
+		if (/^state\s+\w+\s*\{/.test(line) || line === "{" || line === "}") continue;
+
+		// Skip notes: note left of, note right of, note
+		if (/^note\s/.test(line)) continue;
+
+		// Skip final state transitions: StateName --> [*]
+		if (/-->\s*\[\*\]\s*$/.test(line)) continue;
 
 		// Match: [*] --> StateName
 		const initialMatch = line.match(/^\[\*\]\s*-->\s*(\w+)$/);
@@ -111,6 +145,7 @@ export function fromMermaid<
 
 			stateTransitions.get(event)!.push(transitionObj);
 		}
+		// Any other unrecognized lines are silently ignored
 	}
 
 	if (!initial) {

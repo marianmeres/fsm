@@ -112,6 +112,29 @@ stateDiagram-v2
 // parse mermaid diagram back to FSM (for documentation/visualization roundtripping)
 const fsm2 = FSM.fromMermaid(fsm.toMermaid());
 // Note: guards/actions become placeholders (null), onEnter/onExit hooks are not preserved
+
+// Complex diagrams with visual annotations are also supported:
+const fsm3 = FSM.fromMermaid(`
+stateDiagram-v2
+    direction LR
+
+    %% Traffic Light Controller
+    %% Author: Your Name
+
+    [*] --> RED
+
+    state "Stop" as RED
+    state "Go" as GREEN
+
+    RED --> GREEN: timer
+    GREEN --> RED: timer
+
+    classDef danger fill:#f00
+    class RED danger
+
+    note right of RED: Vehicles must stop
+`);
+// Comments, styling, notes, directions etc. are gracefully ignored
 ```
 
 ![State Diagram](mermaid.png "State Diagram")

@@ -286,3 +286,211 @@ Deno.test("roundtrip with internal transitions", () => {
 	assertEquals(config2.states.PLAYING.on.volume_up, "PLAYING"); // Now simple string
 	assertEquals(config2.states.PLAYING.on.stop, "STOPPED");
 });
+
+// =============================================================================
+// Tests for ignoring non-FSM Mermaid features
+// =============================================================================
+
+Deno.test("ignores comments", () => {
+	const mermaid = `stateDiagram-v2
+    %% This is a comment
+    [*] --> IDLE
+    %% Another comment about the transition
+    IDLE --> ACTIVE: start
+    %%{ init: { 'theme': 'dark' } }%%
+    ACTIVE --> IDLE: stop
+`;
+
+	const config = fromMermaid(mermaid);
+	assertEquals(config.initial, "IDLE");
+	assertEquals(config.states.IDLE.on.start, "ACTIVE");
+	assertEquals(config.states.ACTIVE.on.stop, "IDLE");
+});
+
+Deno.test("ignores direction statements", () => {
+	const mermaid = `stateDiagram-v2
+    direction LR
+    [*] --> OFF
+    OFF --> ON: toggle
+    ON --> OFF: toggle
+`;
+
+	const config = fromMermaid(mermaid);
+	assertEquals(config.initial, "OFF");
+	assertEquals(config.states.OFF.on.toggle, "ON");
+	assertEquals(config.states.ON.on.toggle, "OFF");
+});
+
+Deno.test("ignores styling (classDef, class, style)", () => {
+	const mermaid = `stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> ERROR: fail
+    ERROR --> IDLE: reset
+
+    classDef errorState fill:#f00,color:white
+    class ERROR errorState
+    style IDLE fill:#0f0
+`;
+
+	const config = fromMermaid(mermaid);
+	assertEquals(config.initial, "IDLE");
+	assertEquals(config.states.IDLE.on.fail, "ERROR");
+	assertEquals(config.states.ERROR.on.reset, "IDLE");
+});
+
+Deno.test("ignores state descriptions", () => {
+	const mermaid = `stateDiagram-v2
+    [*] --> IDLE
+    state "Waiting for input" as IDLE
+    state "Processing request" as LOADING
+    IDLE --> LOADING: submit
+    LOADING --> IDLE: done
+`;
+
+	const config = fromMermaid(mermaid);
+	assertEquals(config.initial, "IDLE");
+	assertEquals(config.states.IDLE.on.submit, "LOADING");
+	assertEquals(config.states.LOADING.on.done, "IDLE");
+});
+
+Deno.test("ignores notes", () => {
+	const mermaid = `stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> ACTIVE: start
+    note right of IDLE: This is the initial state
+    note left of ACTIVE
+        This is a multiline note
+        about the active state
+    end note
+    ACTIVE --> IDLE: stop
+`;
+
+	const config = fromMermaid(mermaid);
+	assertEquals(config.initial, "IDLE");
+	assertEquals(config.states.IDLE.on.start, "ACTIVE");
+	assertEquals(config.states.ACTIVE.on.stop, "IDLE");
+});
+
+Deno.test("ignores final state transitions", () => {
+	const mermaid = `stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> RUNNING: start
+    RUNNING --> IDLE: stop
+    RUNNING --> [*]
+`;
+
+	const config = fromMermaid(mermaid);
+	assertEquals(config.initial, "IDLE");
+	assertEquals(config.states.IDLE.on.start, "RUNNING");
+	assertEquals(config.states.RUNNING.on.stop, "IDLE");
+	// The final state transition is ignored, no error thrown
+});
+
+Deno.test("ignores composite state syntax (braces only)", () => {
+	// Note: transitions inside composite states ARE parsed as regular transitions.
+	// Only the `state StateName {` and `}` lines are ignored.
+	// This is intentional - inner transitions are still valid FSM transitions.
+	const mermaid = `stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> ACTIVE: start
+    state ACTIVE {
+    }
+    ACTIVE --> IDLE: stop
+`;
+
+	const config = fromMermaid(mermaid);
+	assertEquals(config.initial, "IDLE");
+	assertEquals(config.states.IDLE.on.start, "ACTIVE");
+	assertEquals(config.states.ACTIVE.on.stop, "IDLE");
+});
+
+Deno.test("parses transitions inside composite state blocks", () => {
+	// Transitions inside composite state blocks ARE parsed
+	// (the braces are ignored but transitions are kept)
+	const mermaid = `stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> ACTIVE: start
+    state ACTIVE {
+        RUNNING --> PAUSED: pause
+        PAUSED --> RUNNING: resume
+    }
+    ACTIVE --> IDLE: stop
+`;
+
+	const config = fromMermaid(mermaid);
+	assertEquals(config.initial, "IDLE");
+	assertEquals(config.states.IDLE.on.start, "ACTIVE");
+	assertEquals(config.states.ACTIVE.on.stop, "IDLE");
+	// Inner transitions are parsed as regular transitions
+	assertEquals(config.states.RUNNING.on.pause, "PAUSED");
+	assertEquals(config.states.PAUSED.on.resume, "RUNNING");
+});
+
+Deno.test("complex diagram with multiple ignored features", () => {
+	const mermaid = `stateDiagram-v2
+    direction TB
+
+    %% Traffic Light State Machine
+    %% Author: Someone
+
+    [*] --> RED
+
+    state "Stop - Wait" as RED
+    state "Prepare to go" as YELLOW
+    state "Go!" as GREEN
+
+    RED --> GREEN: timer
+    GREEN --> YELLOW: timer
+    YELLOW --> RED: timer
+
+    %% Emergency override
+    RED --> RED: emergency / (action internal)
+    GREEN --> RED: emergency
+    YELLOW --> RED: emergency
+
+    GREEN --> [*]
+
+    classDef danger fill:#f00,color:white
+    classDef warning fill:#ff0,color:black
+    classDef safe fill:#0f0,color:black
+
+    class RED danger
+    class YELLOW warning
+    class GREEN safe
+
+    note right of RED: All vehicles must stop
+    note right of GREEN: Vehicles may proceed
+`;
+
+	const config = fromMermaid(mermaid);
+
+	assertEquals(config.initial, "RED");
+	assertEquals(config.states.RED.on.timer, "GREEN");
+	assertEquals(config.states.GREEN.on.timer, "YELLOW");
+	assertEquals(config.states.YELLOW.on.timer, "RED");
+
+	// Internal transition for emergency on RED
+	assertEquals((config.states.RED.on.emergency as any).target, undefined);
+	assertEquals((config.states.RED.on.emergency as any).action, null);
+
+	// External transitions for emergency on other states
+	assertEquals(config.states.GREEN.on.emergency, "RED");
+	assertEquals(config.states.YELLOW.on.emergency, "RED");
+});
+
+Deno.test("ignores unknown/unrecognized lines gracefully", () => {
+	const mermaid = `stateDiagram-v2
+    [*] --> A
+    some random text that is not valid mermaid
+    A --> B: go
+    this: is also: not: valid
+    B --> A: back
+    ---
+    :::mermaid
+`;
+
+	const config = fromMermaid(mermaid);
+	assertEquals(config.initial, "A");
+	assertEquals(config.states.A.on.go, "B");
+	assertEquals(config.states.B.on.back, "A");
+});
