@@ -82,7 +82,7 @@ const fsm = new FSM<STATES, TRANSITIONS, CONTEXT>({
 // examples:
 
 // subscribe to reactive updates
-const unsub = fsm.subscribe(({ state, context }) => log.push({ state, context }));
+const unsub = fsm.subscribe(({ current, context }) => log.push({ current, context }));
 
 assertEquals(fsm.is("IDLE"), true);
 
@@ -245,6 +245,10 @@ context: { count: 0, increment: () => {} }
 ```
 
 For mutations, use **action hooks** (`action`, `onEnter`, `onExit`) which are designed for side effects. For helper functions, define them outside the FSM and pass context as parameters.
+
+## API Reference
+
+For complete API documentation including all types, methods, and detailed parameter descriptions, see [API.md](API.md).
 
 ## Package Identity
 

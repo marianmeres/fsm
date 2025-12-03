@@ -1,15 +1,42 @@
 import type { FSMConfig, TransitionObj } from "./fsm.ts";
 
 /**
- * Parses a Mermaid stateDiagram-v2 notation into an FSM config structure.
+ * Parses a Mermaid stateDiagram-v2 notation into an FSM configuration object.
  *
- * Limitations:
- * - Cannot recreate actual guard/action functions (sets them to null as placeholders)
- * - Cannot recreate onEnter/onExit hooks (not represented in mermaid)
+ * This function enables round-tripping between FSM configurations and Mermaid diagrams,
+ * making it useful for documentation, visualization, and testing.
+ *
+ * **Supported label formats:**
+ * - `event` - Simple transition
+ * - `* (any)` - Wildcard transition
+ * - `event [guard N]` or `event [guarded]` - Guarded transition
+ * - `event / (action)` - Transition with action
+ * - `event / (action internal)` - Internal transition (no state change)
+ * - `event [guard N] / (action)` - Guarded transition with action
+ *
+ * **Limitations:**
+ * - Cannot recreate actual guard/action functions (sets them to `null` as placeholders)
+ * - Cannot recreate `onEnter`/`onExit` hooks (not represented in Mermaid)
  * - Cannot infer context structure
  * - Type information must be provided via generics
  *
- * This is primarily useful for documentation/visualization roundtripping.
+ * @template TState - Union type of all possible state names
+ * @template TTransition - Union type of all possible transition event names
+ * @template TContext - Type of the FSM context object
+ * @param mermaidDiagram - A Mermaid stateDiagram-v2 string
+ * @returns FSM configuration object ready to pass to the FSM constructor
+ * @throws Error if the diagram is invalid (missing header or initial state)
+ *
+ * @example
+ * ```typescript
+ * const config = fromMermaid<"ON" | "OFF", "toggle">(`
+ *   stateDiagram-v2
+ *   [*] --> OFF
+ *   OFF --> ON: toggle
+ *   ON --> OFF: toggle
+ * `);
+ * const fsm = new FSM(config);
+ * ```
  */
 export function fromMermaid<
 	TState extends string = string,

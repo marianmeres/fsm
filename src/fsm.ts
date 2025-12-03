@@ -1,10 +1,20 @@
 import { createPubSub, type Unsubscriber } from "@marianmeres/pubsub";
 import { fromMermaid as fromMermaidParser } from "./from-mermaid.ts";
 
-/** Arbitrary transition payload */
+/**
+ * Arbitrary payload data passed during transitions.
+ * This can be any value and is forwarded to guards, actions, onEnter, and onExit hooks.
+ */
 export type FSMPayload = any;
 
-/** State configuration value */
+/**
+ * Configuration object for a single state.
+ * Defines the available transitions from this state and optional lifecycle hooks.
+ *
+ * @template TState - Union type of all possible state names
+ * @template TTransition - Union type of all possible transition event names
+ * @template TContext - Type of the FSM context object
+ */
 export type FSMStatesConfigValue<
 	TState extends string,
 	TTransition extends string,
@@ -15,7 +25,13 @@ export type FSMStatesConfigValue<
 	onExit?: (context: TContext, payload?: FSMPayload) => void;
 };
 
-/** State to configuration map */
+/**
+ * Maps state names to their configuration objects.
+ *
+ * @template TState - Union type of all possible state names
+ * @template TTransition - Union type of all possible transition event names
+ * @template TContext - Type of the FSM context object
+ */
 export type FSMStatesConfigMap<
 	TState extends string,
 	TTransition extends string,
@@ -82,19 +98,53 @@ export type TransitionObj<TState, TContext> = {
 	action?: (context: TContext, payload?: FSMPayload) => void;
 };
 
-/** Transition configuration definition */
+/**
+ * Transition configuration definition.
+ * Can be specified in three forms:
+ * - Simple string: target state name (e.g., `"IDLE"`)
+ * - Single object: `{ target, guard?, action? }`
+ * - Array of objects: multiple guarded transitions evaluated in order
+ *
+ * @template TState - Union type of all possible state names
+ * @template TContext - Type of the FSM context object
+ */
 export type TransitionDef<TState, TContext> =
 	| TState
 	| TransitionObj<TState, TContext>
 	| TransitionObj<TState, TContext>[];
 
-/** FSM's published state */
+/**
+ * Published state data sent to subscribers.
+ * Contains the current state, previous state (null if initial), and context.
+ *
+ * @template TState - Union type of all possible state names
+ */
 export type PublishedState<TState> = {
 	current: TState;
 	previous: TState | null;
 };
 
-/** For historical reasons exporting a factory fn as well (same as calling `new FSM`) */
+/**
+ * Factory function to create an FSM instance.
+ * Equivalent to calling `new FSM(config)`.
+ *
+ * @template TState - Union type of all possible state names
+ * @template TTransition - Union type of all possible transition event names
+ * @template TContext - Type of the FSM context object
+ * @param config - The FSM configuration object
+ * @returns A new FSM instance
+ *
+ * @example
+ * ```typescript
+ * const fsm = createFsm<"ON" | "OFF", "toggle">({
+ *   initial: "OFF",
+ *   states: {
+ *     ON: { on: { toggle: "OFF" } },
+ *     OFF: { on: { toggle: "ON" } }
+ *   }
+ * });
+ * ```
+ */
 export function createFsm<
 	TState extends string,
 	TTransition extends string,
@@ -106,7 +156,30 @@ export function createFsm<
 }
 
 /**
- * Lightweight, typed, framework-agnostic Finite State Machine.
+ * A lightweight, typed, framework-agnostic Finite State Machine.
+ *
+ * This FSM implementation is synchronous and acts as a pure state graph description.
+ * It manages state transitions and enforces rules via guards, transition actions,
+ * and lifecycle hooks (onEnter/onExit), but contains no business logic by design.
+ *
+ * @template TState - Union type of all possible state names
+ * @template TTransition - Union type of all possible transition event names
+ * @template TContext - Type of the FSM context object (should contain only data, no functions)
+ *
+ * @example
+ * ```typescript
+ * const fsm = new FSM<"IDLE" | "LOADING", "load" | "done">({
+ *   initial: "IDLE",
+ *   context: { count: 0 },
+ *   states: {
+ *     IDLE: { on: { load: "LOADING" } },
+ *     LOADING: { on: { done: "IDLE" } }
+ *   }
+ * });
+ *
+ * fsm.subscribe(({ current, context }) => console.log(current, context));
+ * fsm.transition("load"); // → "LOADING"
+ * ```
  */
 export class FSM<
 	TState extends string,
@@ -119,13 +192,20 @@ export class FSM<
 	/** FSM's current state */
 	#state: TState;
 
-	/** A custom object accessible throughout the FSM's lifetime. */
+	/**
+	 * A custom data object accessible throughout the FSM's lifetime.
+	 * Context should contain only data (no functions) to ensure serializability and cloneability.
+	 * Mutate context in action hooks (action, onEnter, onExit), not in guards.
+	 */
 	context: TContext;
 
 	/** Internal pub sub */
 	#pubsub = createPubSub();
 
-	/** Creates the FSM instance */
+	/**
+	 * Creates a new FSM instance.
+	 * @param config - The FSM configuration containing initial state, states definition, and optional context
+	 */
 	constructor(
 		public readonly config: FSMConfig<TState, TTransition, TContext>
 	) {
@@ -133,7 +213,11 @@ export class FSM<
 		this.context = this.#initContext();
 	}
 
-	/** Non-reactive getter from the outside */
+	/**
+	 * Returns the current state of the FSM.
+	 * This is a non-reactive getter; use `subscribe()` for reactive updates.
+	 * @returns The current state name
+	 */
 	get state(): TState {
 		return this.#state;
 	}
@@ -159,7 +243,21 @@ export class FSM<
 		this.#pubsub.publish("change", this.#getNotifyData());
 	}
 
-	/** Reactive subscription to FSM's state */
+	/**
+	 * Subscribes to FSM state changes.
+	 * The callback is invoked immediately with the current state and on every subsequent state change.
+	 *
+	 * @param cb - Callback function receiving current state, previous state, and context
+	 * @returns Unsubscriber function to stop receiving updates
+	 *
+	 * @example
+	 * ```typescript
+	 * const unsub = fsm.subscribe(({ current, previous, context }) => {
+	 *   console.log(`State changed from ${previous} to ${current}`);
+	 * });
+	 * // Later: unsub() to stop listening
+	 * ```
+	 */
 	subscribe(
 		cb: (data: PublishedState<TState> & { context: TContext }) => void
 	): Unsubscriber {
@@ -169,15 +267,29 @@ export class FSM<
 	}
 
 	/**
-	 * "Requests" FSM to transition to target state providing payload and respecting
-	 * the configuration.
+	 * Requests the FSM to transition based on the given event.
 	 *
-	 * Execution order during transition:
-	 * 1. onExit (OLD state)
-	 * 2. action (TRANSITION edge)
-	 * 3. state changes
-	 * 4. onEnter (NEW state)
-	 * 5. notify consumers
+	 * Execution order during external transitions:
+	 * 1. `onExit` hook of the current state
+	 * 2. `action` of the transition edge
+	 * 3. State changes (previous/current updated)
+	 * 4. `onEnter` hook of the new state
+	 * 5. Subscribers notified
+	 *
+	 * For internal transitions (no target defined), only the action runs and subscribers are notified.
+	 *
+	 * @param event - The transition event name
+	 * @param payload - Optional data passed to guards, actions, and lifecycle hooks
+	 * @param assert - If true (default), throws on invalid transitions; if false, returns current state
+	 * @returns The new state after transition, or current state if transition failed in non-assert mode
+	 * @throws Error if the transition is invalid and assert is true
+	 *
+	 * @example
+	 * ```typescript
+	 * fsm.transition("fetch");           // Basic transition
+	 * fsm.transition("resolve", data);   // With payload
+	 * fsm.transition("invalid", null, false); // Non-throwing mode
+	 * ```
 	 */
 	transition(
 		event: TTransition,
@@ -301,7 +413,18 @@ export class FSM<
 		return transition;
 	}
 
-	/** Resets the FSM to initial state and re-initializes context */
+	/**
+	 * Resets the FSM to its initial state and re-initializes the context.
+	 * If context was defined as a factory function, a fresh context is created.
+	 * Subscribers are notified after reset.
+	 *
+	 * @returns The FSM instance for chaining
+	 *
+	 * @example
+	 * ```typescript
+	 * fsm.reset().is("IDLE"); // true
+	 * ```
+	 */
 	reset(): FSM<TState, TTransition, TContext> {
 		this.#state = this.config.initial;
 		this.#previous = null;
@@ -310,7 +433,19 @@ export class FSM<
 		return this;
 	}
 
-	/** Check whether the FSM is in the given state */
+	/**
+	 * Checks whether the FSM is currently in the given state.
+	 *
+	 * @param state - The state to check against
+	 * @returns True if the FSM is in the specified state
+	 *
+	 * @example
+	 * ```typescript
+	 * if (fsm.is("LOADING")) {
+	 *   showSpinner();
+	 * }
+	 * ```
+	 */
 	is(state: TState): boolean {
 		return this.#state === state;
 	}
@@ -369,7 +504,26 @@ export class FSM<
 		return new FSM<TState, TTransition, TContext>(config);
 	}
 
-	/** Generates Mermaid state diagram notation from FSM config */
+	/**
+	 * Generates a Mermaid stateDiagram-v2 notation from the FSM configuration.
+	 * Useful for visualizing the state machine graph.
+	 *
+	 * The output follows UML conventions:
+	 * - Guards are shown as `[guard N]` or `[guarded]`
+	 * - Actions are shown as `/ (action)` or `/ (action internal)` for internal transitions
+	 * - Wildcards are shown as `* (any)`
+	 *
+	 * @returns Mermaid diagram string
+	 *
+	 * @example
+	 * ```typescript
+	 * console.log(fsm.toMermaid());
+	 * // stateDiagram-v2
+	 * //     [*] --> IDLE
+	 * //     IDLE --> LOADING: load
+	 * //     LOADING --> SUCCESS: resolve
+	 * ```
+	 */
 	toMermaid(): string {
 		let mermaid = "stateDiagram-v2\n";
 		mermaid += `    [*] --> ${this.config.initial}\n`;
