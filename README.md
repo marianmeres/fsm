@@ -95,9 +95,22 @@ assertThrows(() => fsm.transition("retry"));
 // non-reactive props
 console.log(fsm.state, fsm.context);
 
-// built-in mermaid helper so you can easily visualize the graph
+```
+
+## Mermaid Diagram Support
+
+The FSM includes built-in support for [Mermaid](https://mermaid.js.org/) state diagrams, enabling visualization, documentation, and even diagram-driven development.
+
+### Exporting to Mermaid (`toMermaid`)
+
+Generate a Mermaid state diagram from your FSM definition:
+
+```typescript
 console.log(fsm.toMermaid());
-/**
+```
+
+Output:
+```
 stateDiagram-v2
     [*] --> IDLE
     IDLE --> FETCHING: fetch
@@ -107,14 +120,53 @@ stateDiagram-v2
     RETRYING --> FETCHING: retry
     SUCCESS --> IDLE: reset
     FAILED --> IDLE: reset
-*/
+```
 
-// parse mermaid diagram back to FSM (for documentation/visualization roundtripping)
+![State Diagram](mermaid.png "State Diagram")
+
+This is useful for:
+- **Documentation**: Automatically generate up-to-date diagrams from code
+- **Debugging**: Visualize complex state machines to understand flow
+- **Communication**: Share state machine designs with non-technical stakeholders
+
+### Parsing from Mermaid (`fromMermaid`)
+
+Create an FSM instance directly from a Mermaid diagram string:
+
+```typescript
+const fsm = FSM.fromMermaid(`
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> LOADING: fetch
+    LOADING --> SUCCESS: resolve
+    LOADING --> ERROR: reject
+    SUCCESS --> IDLE: reset
+    ERROR --> IDLE: reset
+`);
+
+// The FSM is fully functional
+fsm.transition("fetch");  // → LOADING
+fsm.transition("resolve"); // → SUCCESS
+```
+
+This enables **diagram-driven development**: design your state machine visually first, then parse it into a working FSM.
+
+### Roundtripping
+
+You can export an FSM to Mermaid and parse it back:
+
+```typescript
 const fsm2 = FSM.fromMermaid(fsm.toMermaid());
-// Note: guards/actions become placeholders (null), onEnter/onExit hooks are not preserved
+```
 
-// Complex diagrams with visual annotations are also supported:
-const fsm3 = FSM.fromMermaid(`
+**Note:** Guards and actions become `null` placeholders when parsing from Mermaid (since diagrams only capture structure, not logic). Lifecycle hooks (`onEnter`/`onExit`) are also not preserved.
+
+### Complex Diagram Support
+
+The parser handles real-world Mermaid diagrams with visual annotations:
+
+```typescript
+const fsm = FSM.fromMermaid(`
 stateDiagram-v2
     direction LR
 
@@ -134,10 +186,9 @@ stateDiagram-v2
 
     note right of RED: Vehicles must stop
 `);
-// Comments, styling, notes, directions etc. are gracefully ignored
 ```
 
-![State Diagram](mermaid.png "State Diagram")
+Comments (`%%`), styling (`classDef`, `class`), notes, directions, and state aliases are gracefully ignored during parsing, extracting only the structural information needed to build the FSM.
 
 ## Transitions
 
