@@ -636,7 +636,7 @@ Deno.test("toTypeScript generates valid TypeScript code", () => {
 	assertEquals(tsCode.includes("guard: (ctx) => true, // TODO:"), true);
 
 	// Check action placeholder
-	assertEquals(tsCode.includes("action: (ctx) => { /* TODO: implement action */ }"), true);
+	assertEquals(tsCode.includes("action: (ctx) => { /* TODO: [ACTION: action] */ }"), true);
 });
 
 Deno.test("toTypeScript respects custom options", () => {
@@ -676,5 +676,63 @@ Deno.test("toTypeScript handles internal transitions", () => {
 
 	// Internal transition should have action but no target
 	assertEquals(tsCode.includes("volumeUp: {"), true);
-	assertEquals(tsCode.includes("action: (ctx) => { /* TODO: implement action */ }"), true);
+	assertEquals(tsCode.includes("action: (ctx) => { /* TODO: [ACTION: action] */ }"), true);
+});
+
+Deno.test("extended action notation with descriptions", () => {
+	const mermaid = `stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> SAVING: save / (action persist to database)
+    SAVING --> IDLE: done
+    IDLE --> IDLE: log / (action internal)
+    IDLE --> NOTIFY: alert / (action send email notification)
+    NOTIFY --> IDLE: ack
+`;
+
+	const config = fromMermaid(mermaid);
+
+	assertEquals(config.initial, "IDLE");
+
+	// Check that action notations are preserved in toJSON
+	const saveAction = config.states.IDLE.on.save as TransitionObj<string, unknown>;
+	assertEquals(saveAction.target, "SAVING");
+	assertEquals(typeof saveAction.action, "function");
+	// The toJSON should include the description
+	assertEquals(
+		(saveAction.action as unknown as { toJSON: () => string }).toJSON(),
+		"[ACTION: (action persist to database)]"
+	);
+
+	const alertAction = config.states.IDLE.on.alert as TransitionObj<string, unknown>;
+	assertEquals(alertAction.target, "NOTIFY");
+	assertEquals(
+		(alertAction.action as unknown as { toJSON: () => string }).toJSON(),
+		"[ACTION: (action send email notification)]"
+	);
+
+	// Internal action without description should have default
+	const logAction = config.states.IDLE.on.log as TransitionObj<string, unknown>;
+	assertEquals(logAction.target, undefined); // internal
+	assertEquals(
+		(logAction.action as unknown as { toJSON: () => string }).toJSON(),
+		"[ACTION: action]"
+	);
+});
+
+Deno.test("toTypeScript includes action descriptions in TODO comments", () => {
+	const mermaid = `stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> SAVING: save [guard isValid] / (action persist to database)
+    SAVING --> IDLE: done
+`;
+
+	const tsCode = toTypeScript(mermaid);
+
+	// Check that action description is in TODO
+	assertEquals(
+		tsCode.includes("action: (ctx) => { /* TODO: [ACTION: (action persist to database)] */ }"),
+		true
+	);
+	// Check guard is also preserved
+	assertEquals(tsCode.includes("guard: (ctx) => true, // TODO: [GUARD: [guard isValid]]"), true);
 });

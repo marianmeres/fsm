@@ -314,7 +314,8 @@ Parses a Mermaid stateDiagram-v2 notation into an FSM configuration object. This
 - `event [guard N]`, `event [guarded]`, or `event [guard ...]` - Guarded transition
 - `event / (action)` - Transition with action
 - `event / (action internal)` - Internal transition (no state change)
-- `event [guard ...] / (action)` - Guarded transition with action
+- `event / (action description here)` - Transition with action and description
+- `event [guard ...] / (action ...)` - Guarded transition with action (both can have descriptions)
 
 **Ignored Mermaid features (non-FSM lines):**
 - YAML frontmatter (`---\nconfig: ...\n---`)

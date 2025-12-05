@@ -126,6 +126,7 @@ Guard with index    → [guard N]
 Guard without index → [guarded]
 Guard expression    → [guard ...]  (e.g., [guard amount < price])
 Action              → / (action)
+Action with desc    → / (action ...)  (e.g., / (action save to db))
 Internal action     → / (action internal)
 Wildcard            → * (any)
 ```

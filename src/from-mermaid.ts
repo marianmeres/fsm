@@ -127,7 +127,8 @@ function formatTransitionDef(
 	if (!t.target) {
 		let out = `${i}${event}: {\n`;
 		if (t.action) {
-			out += `${i1}action: (ctx) => { /* TODO: implement action */ },\n`;
+			const actionHint = t.action?.toJSON?.() ?? "[ACTION: action]";
+			out += `${i1}action: (ctx) => { /* TODO: ${actionHint} */ },\n`;
 		}
 		out += `${i}},\n`;
 		return out;
@@ -144,11 +145,12 @@ function formatTransitionDef(
 	let out = `${i}${event}: {\n`;
 	out += `${i1}target: "${t.target}",\n`;
 	if (hasGuard) {
-		const guardHint = t.guard?.toJSON?.() ?? "[guard]";
+		const guardHint = t.guard?.toJSON?.() ?? "[GUARD: guard]";
 		out += `${i1}guard: (ctx) => true, // TODO: ${guardHint}\n`;
 	}
 	if (hasAction) {
-		out += `${i1}action: (ctx) => { /* TODO: implement action */ },\n`;
+		const actionHint = t.action?.toJSON?.() ?? "[ACTION: action]";
+		out += `${i1}action: (ctx) => { /* TODO: ${actionHint} */ },\n`;
 	}
 	out += `${i}},\n`;
 	return out;
@@ -172,12 +174,13 @@ function formatSingleTransition(
 	}
 
 	if (t.guard) {
-		const guardHint = t.guard?.toJSON?.() ?? "[guard]";
+		const guardHint = t.guard?.toJSON?.() ?? "[GUARD: guard]";
 		out += `${i1}guard: (ctx) => true, // TODO: ${guardHint}\n`;
 	}
 
 	if (t.action) {
-		out += `${i1}action: (ctx) => { /* TODO: implement action */ },\n`;
+		const actionHint = t.action?.toJSON?.() ?? "[ACTION: action]";
+		out += `${i1}action: (ctx) => { /* TODO: ${actionHint} */ },\n`;
 	}
 
 	out += `${i}},\n`;
@@ -201,12 +204,12 @@ function createPlaceholderGuard<TContext>(
  * Creates a placeholder action function with toJSON for serialization.
  * The action is a no-op and serializes to a descriptive string.
  */
-function createPlaceholderAction<TContext>(): (
-	context: TContext,
-	payload?: FSMPayload
-) => void {
+function createPlaceholderAction<TContext>(
+	notation: string | null
+): (context: TContext, payload?: FSMPayload) => void {
 	const actionFn = () => {};
-	(actionFn as unknown as { toJSON: () => string }).toJSON = () => "[ACTION]";
+	(actionFn as unknown as { toJSON: () => string }).toJSON = () =>
+		`[ACTION: ${notation ?? "action"}]`;
 	return actionFn;
 }
 
@@ -347,7 +350,7 @@ export function fromMermaid<
 			if (from === to && parsed.isInternalAction) {
 				// No target for internal transitions
 				if (parsed.hasAction) {
-					transitionObj.action = createPlaceholderAction();
+					transitionObj.action = createPlaceholderAction(parsed.actionNotation);
 				}
 			} else {
 				transitionObj.target = to;
@@ -355,7 +358,7 @@ export function fromMermaid<
 					transitionObj.guard = createPlaceholderGuard(parsed.guardNotation);
 				}
 				if (parsed.hasAction) {
-					transitionObj.action = createPlaceholderAction();
+					transitionObj.action = createPlaceholderAction(parsed.actionNotation);
 				}
 			}
 
@@ -415,7 +418,8 @@ export function fromMermaid<
  * - "event [guard anything here]"
  * - "event / (action)"
  * - "event / (action internal)"
- * - "event [guard ...] / (action)"
+ * - "event / (action any text here)"
+ * - "event [guard ...] / (action ...)"
  * - "* (any) / (action)"
  */
 function parseLabel(label: string): {
@@ -424,18 +428,26 @@ function parseLabel(label: string): {
 	guardNotation: string | null;
 	hasAction: boolean;
 	isInternalAction: boolean;
+	actionNotation: string | null;
 } {
 	let event = label;
 	let hasGuard = false;
 	let guardNotation: string | null = null;
 	let hasAction = false;
 	let isInternalAction = false;
+	let actionNotation: string | null = null;
 
 	// Check for action suffix
-	const actionMatch = label.match(/\s*\/\s*\((action(?:\s+internal)?)\)$/);
+	// Supports: (action), (action internal), (action any text here)
+	const actionMatch = label.match(/\s*\/\s*\((action(?:\s+[^)]*)?)\)$/);
 	if (actionMatch) {
 		hasAction = true;
-		isInternalAction = actionMatch[1].includes("internal");
+		const actionContent = actionMatch[1]; // e.g., "action internal" or "action save to db"
+		isInternalAction = actionContent === "action internal";
+		// Extract notation if there's text after "action" (and it's not just "internal")
+		if (actionContent !== "action" && actionContent !== "action internal") {
+			actionNotation = `(${actionContent})`; // e.g., "(action save to db)"
+		}
 		// Remove action part from label
 		event = label.substring(0, actionMatch.index).trim();
 	}
@@ -455,5 +467,5 @@ function parseLabel(label: string): {
 		event = "*";
 	}
 
-	return { event, hasGuard, guardNotation, hasAction, isInternalAction };
+	return { event, hasGuard, guardNotation, hasAction, isInternalAction, actionNotation };
 }
