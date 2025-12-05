@@ -5,7 +5,7 @@ Deno.test("basic", () => {
 	type STATES = "ON" | "OFF";
 	type TRANSITIONS = "start" | "stop";
 
-	const log: any[] = [];
+	const log: { current: string; previous: string | null; context: unknown }[] = [];
 
 	const fsm = createFsm<STATES, TRANSITIONS>({
 		initial: "OFF",
@@ -56,8 +56,8 @@ Deno.test("fetch retry definition", () => {
 	type CONTEXT = {
 		attempts: number;
 		maxRetries: number;
-		data: any;
-		error: any;
+		data: unknown;
+		error: unknown;
 	};
 
 	const log: string[] = [];
@@ -75,7 +75,7 @@ Deno.test("fetch retry definition", () => {
 				on: { fetch: "FETCHING" }, // simple string notation
 			},
 			FETCHING: {
-				onEnter: (context: any) => {
+				onEnter: (context) => {
 					context.attempts += 1;
 				},
 				on: {

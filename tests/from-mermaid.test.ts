@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { fromMermaid } from "../src/from-mermaid.ts";
-import { FSM } from "../src/fsm.ts";
+import { FSM, type TransitionObj } from "../src/fsm.ts";
 
 Deno.test("simple state machine", () => {
 	const mermaid = `stateDiagram-v2
@@ -37,9 +37,9 @@ Deno.test("with guards and actions", () => {
 	// Check guarded array transitions
 	const rejectTransitions = config.states.FETCHING.on.reject;
 	assertEquals(Array.isArray(rejectTransitions), true);
-	assertEquals((rejectTransitions as any).length, 2);
+	assertEquals((rejectTransitions as TransitionObj<string, unknown>[]).length, 2);
 
-	const [first, second] = rejectTransitions as any[];
+	const [first, second] = rejectTransitions as TransitionObj<string, unknown>[];
 	assertEquals(first.target, "RETRYING");
 	assertEquals(first.guard, null); // placeholder
 	assertEquals(first.action, null); // placeholder
@@ -59,10 +59,10 @@ Deno.test("internal transitions", () => {
 
 	assertEquals(config.initial, "PLAYING");
 
-	const volumeUp = config.states.PLAYING.on.volume_up;
+	const volumeUp = config.states.PLAYING.on.volume_up as TransitionObj<string, unknown>;
 	assertEquals(typeof volumeUp, "object");
-	assertEquals((volumeUp as any).target, undefined);
-	assertEquals((volumeUp as any).action, null); // placeholder
+	assertEquals(volumeUp.target, undefined);
+	assertEquals(volumeUp.action, null); // placeholder
 });
 
 Deno.test("wildcard transitions", () => {
@@ -79,10 +79,10 @@ Deno.test("wildcard transitions", () => {
 	assertEquals(config.states.IDLE.on.start, "ACTIVE");
 
 	// Wildcard with action
-	const activeWildcard = config.states.ACTIVE.on["*"];
+	const activeWildcard = config.states.ACTIVE.on["*"] as TransitionObj<string, unknown>;
 	assertEquals(typeof activeWildcard, "object");
-	assertEquals((activeWildcard as any).target, "ERROR");
-	assertEquals((activeWildcard as any).action, null); // placeholder
+	assertEquals(activeWildcard.target, "ERROR");
+	assertEquals(activeWildcard.action, null); // placeholder
 
 	// Wildcard without action
 	assertEquals(config.states.ERROR.on["*"], "IDLE");
@@ -103,18 +103,18 @@ Deno.test("various label formats", () => {
 	assertEquals(config.initial, "A");
 	assertEquals(config.states.A.on.simple, "B");
 
-	const guarded = config.states.B.on.guarded;
-	assertEquals((guarded as any).target, "C");
-	assertEquals((guarded as any).guard, null);
+	const guarded = config.states.B.on.guarded as TransitionObj<string, unknown>;
+	assertEquals(guarded.target, "C");
+	assertEquals(guarded.guard, null);
 
-	const withAction = config.states.C.on.with_action;
-	assertEquals((withAction as any).target, "D");
-	assertEquals((withAction as any).action, null);
+	const withAction = config.states.C.on.with_action as TransitionObj<string, unknown>;
+	assertEquals(withAction.target, "D");
+	assertEquals(withAction.action, null);
 
-	const guardedAction = config.states.D.on.guarded_action;
-	assertEquals((guardedAction as any).target, "E");
-	assertEquals((guardedAction as any).guard, null);
-	assertEquals((guardedAction as any).action, null);
+	const guardedAction = config.states.D.on.guarded_action as TransitionObj<string, unknown>;
+	assertEquals(guardedAction.target, "E");
+	assertEquals(guardedAction.guard, null);
+	assertEquals(guardedAction.action, null);
 });
 
 Deno.test("invalid: missing header", () => {
@@ -161,13 +161,13 @@ Deno.test("multiple guards numbered", () => {
 
 	const config = fromMermaid(mermaid);
 
-	const transitions = config.states.A.on.event;
+	const transitions = config.states.A.on.event as TransitionObj<string, unknown>[];
 	assertEquals(Array.isArray(transitions), true);
-	assertEquals((transitions as any[]).length, 3);
+	assertEquals(transitions.length, 3);
 
-	assertEquals((transitions as any[])[0].target, "B");
-	assertEquals((transitions as any[])[1].target, "C");
-	assertEquals((transitions as any[])[2].target, "D");
+	assertEquals(transitions[0].target, "B");
+	assertEquals(transitions[1].target, "C");
+	assertEquals(transitions[2].target, "D");
 });
 
 Deno.test("FSM.fromMermaid - static factory method", () => {
@@ -248,7 +248,7 @@ Deno.test("roundtrip with wildcards", () => {
 
 	// First parse should have action placeholder
 	assertEquals(typeof config1.states.ACTIVE.on["*"], "object");
-	assertEquals((config1.states.ACTIVE.on["*"] as any).action, null);
+	assertEquals((config1.states.ACTIVE.on["*"] as TransitionObj<string, unknown>).action, null);
 
 	// toMermaid won't output the action since it's null, so roundtrip won't preserve it
 	const fsm = new FSM(config1);
@@ -272,8 +272,9 @@ Deno.test("roundtrip with internal transitions", () => {
 	const config1 = fromMermaid(mermaid);
 
 	// First parse should have internal action structure
-	assertEquals((config1.states.PLAYING.on.volume_up as any).target, undefined);
-	assertEquals((config1.states.PLAYING.on.volume_up as any).action, null);
+	const volumeUp = config1.states.PLAYING.on.volume_up as TransitionObj<string, unknown>;
+	assertEquals(volumeUp.target, undefined);
+	assertEquals(volumeUp.action, null);
 
 	// toMermaid won't output action marker when action is null
 	// So internal transitions become regular self-transitions in roundtrip
@@ -488,8 +489,9 @@ Deno.test("complex diagram with multiple ignored features", () => {
 	assertEquals(config.states.YELLOW.on.timer, "RED");
 
 	// Internal transition for emergency on RED
-	assertEquals((config.states.RED.on.emergency as any).target, undefined);
-	assertEquals((config.states.RED.on.emergency as any).action, null);
+	const emergency = config.states.RED.on.emergency as TransitionObj<string, unknown>;
+	assertEquals(emergency.target, undefined);
+	assertEquals(emergency.action, null);
 
 	// External transitions for emergency on other states
 	assertEquals(config.states.GREEN.on.emergency, "RED");
@@ -511,4 +513,42 @@ Deno.test("ignores unknown/unrecognized lines gracefully", () => {
 	assertEquals(config.initial, "A");
 	assertEquals(config.states.A.on.go, "B");
 	assertEquals(config.states.B.on.back, "A");
+});
+
+Deno.test("extended guard notation with expressions", () => {
+	const mermaid = `stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> CHECKING: submit
+    CHECKING --> APPROVED: validate [guard amount < price]
+    CHECKING --> REJECTED: validate [guard amount >= price]
+    CHECKING --> PREMIUM: validate [guard user.isPremium && amount > 1000] / (action)
+    APPROVED --> IDLE: reset
+    REJECTED --> IDLE: reset
+    PREMIUM --> IDLE: reset
+`;
+
+	const config = fromMermaid(mermaid);
+
+	assertEquals(config.initial, "IDLE");
+	assertEquals(config.states.IDLE.on.submit, "CHECKING");
+
+	// Check guarded array transitions
+	const validateTransitions = config.states.CHECKING.on.validate as TransitionObj<string, unknown>[];
+	assertEquals(Array.isArray(validateTransitions), true);
+	assertEquals(validateTransitions.length, 3);
+
+	const [first, second, third] = validateTransitions;
+
+	// First guard: amount < price
+	assertEquals(first.target, "APPROVED");
+	assertEquals(first.guard, null); // placeholder
+
+	// Second guard: amount >= price
+	assertEquals(second.target, "REJECTED");
+	assertEquals(second.guard, null); // placeholder
+
+	// Third guard with action: user.isPremium && amount > 1000
+	assertEquals(third.target, "PREMIUM");
+	assertEquals(third.guard, null); // placeholder
+	assertEquals(third.action, null); // placeholder
 });

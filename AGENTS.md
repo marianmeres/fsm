@@ -73,7 +73,7 @@ tests/
 | `TransitionDef` | type | Transition definition union type |
 | `TransitionObj` | type | Transition object with target/guard/action |
 | `PublishedState` | type | Subscriber callback data type |
-| `FSMPayload` | type | Transition payload type (any) |
+| `FSMPayload` | type | Transition payload type (unknown) |
 
 ### FSM Class Methods
 
@@ -120,6 +120,7 @@ INTERNAL TRANSITION (no target):
 ```
 Guard with index    → [guard N]
 Guard without index → [guarded]
+Guard expression    → [guard ...]  (e.g., [guard amount < price])
 Action              → / (action)
 Internal action     → / (action internal)
 Wildcard            → * (any)
@@ -172,7 +173,7 @@ FSM<TState, TTransition, TContext>
 
 - `TState extends string`: Union of state names (e.g., `"IDLE" | "LOADING"`)
 - `TTransition extends string`: Union of event names (e.g., `"load" | "done"`)
-- `TContext = any`: Context data type (default: any)
+- `TContext = unknown`: Context data type (default: unknown)
 
 ## Error Handling
 

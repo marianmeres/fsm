@@ -28,7 +28,7 @@ import { FSM } from "@marianmeres/fsm";
 ```typescript
 type STATES = "IDLE" | "FETCHING" | "RETRYING" | "SUCCESS" | "FAILED";
 type TRANSITIONS = "fetch" | "resolve" | "reject" | "retry" | "reset";
-type CONTEXT = { attempts: number; maxRetries: number; data: any; error: any; };
+type CONTEXT = { attempts: number; maxRetries: number; data: unknown; error: unknown; };
 
 const fsm = new FSM<STATES, TRANSITIONS, CONTEXT>({
     initial: "IDLE",
@@ -39,7 +39,7 @@ const fsm = new FSM<STATES, TRANSITIONS, CONTEXT>({
             on: { fetch: "FETCHING" }, // simple string notation
         },
         FETCHING: {
-            onEnter: (context: any) => {
+            onEnter: (context) => {
                 context.attempts += 1;
             },
             on: {

@@ -5,7 +5,7 @@ import { fromMermaid as fromMermaidParser } from "./from-mermaid.ts";
  * Arbitrary payload data passed during transitions.
  * This can be any value and is forwarded to guards, actions, onEnter, and onExit hooks.
  */
-export type FSMPayload = any;
+export type FSMPayload = unknown;
 
 /**
  * Configuration object for a single state.
@@ -148,7 +148,7 @@ export type PublishedState<TState> = {
 export function createFsm<
 	TState extends string,
 	TTransition extends string,
-	TContext = any
+	TContext = unknown
 >(
 	config: FSMConfig<TState, TTransition, TContext>
 ): FSM<TState, TTransition, TContext> {
@@ -184,7 +184,7 @@ export function createFsm<
 export class FSM<
 	TState extends string,
 	TTransition extends string,
-	TContext = any
+	TContext = unknown
 > {
 	/** FSM's previous state */
 	#previous: TState | null = null;
@@ -496,7 +496,7 @@ export class FSM<
 	static fromMermaid<
 		TState extends string = string,
 		TTransition extends string = string,
-		TContext = any
+		TContext = unknown
 	>(mermaidDiagram: string): FSM<TState, TTransition, TContext> {
 		const config = fromMermaidParser<TState, TTransition, TContext>(
 			mermaidDiagram
@@ -528,10 +528,10 @@ export class FSM<
 		let mermaid = "stateDiagram-v2\n";
 		mermaid += `    [*] --> ${this.config.initial}\n`;
 
-		for (const [stateName, stateConfig] of Object.entries<any>(
-			this.config.states
-		)) {
-			for (const [event, def] of Object.entries<any>(stateConfig?.on ?? {})) {
+		for (const [stateName, stateConfig] of Object.entries(this.config.states)) {
+			// @ts-expect-error - Object.entries loses type info, but we know the structure
+			for (const [event, _def] of Object.entries(stateConfig?.on ?? {})) {
+				const def = _def as TransitionDef<TState, TContext>;
 				// Helper to format the label: "Event [Guard] / Action"
 				const formatLabel = (
 					evt: string,

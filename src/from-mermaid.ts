@@ -9,10 +9,10 @@ import type { FSMConfig, TransitionObj } from "./fsm.ts";
  * **Supported label formats:**
  * - `event` - Simple transition
  * - `* (any)` - Wildcard transition
- * - `event [guard N]` or `event [guarded]` - Guarded transition
+ * - `event [guard N]`, `event [guarded]`, or `event [guard ...]` - Guarded transition
  * - `event / (action)` - Transition with action
  * - `event / (action internal)` - Internal transition (no state change)
- * - `event [guard N] / (action)` - Guarded transition with action
+ * - `event [guard ...] / (action)` - Guarded transition with action
  *
  * **Ignored Mermaid features (non-FSM lines):**
  * - YAML frontmatter (`---\nconfig: ...\n---`)
@@ -53,20 +53,18 @@ import type { FSMConfig, TransitionObj } from "./fsm.ts";
 export function fromMermaid<
 	TState extends string = string,
 	TTransition extends string = string,
-	TContext = any
+	TContext = unknown
 >(mermaidDiagram: string): FSMConfig<TState, TTransition, TContext> {
 	const lines = mermaidDiagram.trim().split("\n");
 
 	// Find the stateDiagram-v2 header, skipping any YAML frontmatter
 	// (e.g., ---\nconfig:\n  layout: elk\n---\nstateDiagram-v2)
-	let startIndex = lines.findIndex((line) =>
+	const startIndex = lines.findIndex((line) =>
 		line.trim().startsWith("stateDiagram-v2")
 	);
 
 	if (startIndex === -1) {
-		throw new Error(
-			'Invalid mermaid diagram: must contain "stateDiagram-v2"'
-		);
+		throw new Error('Invalid mermaid diagram: must contain "stateDiagram-v2"');
 	}
 
 	let initial: TState | null = null;
@@ -94,7 +92,8 @@ export function fromMermaid<
 		if (/^state\s+["']/.test(line)) continue;
 
 		// Skip composite state definitions: state StateName { or just {
-		if (/^state\s+\w+\s*\{/.test(line) || line === "{" || line === "}") continue;
+		if (/^state\s+\w+\s*\{/.test(line) || line === "{" || line === "}")
+			continue;
 
 		// Skip notes: note left of, note right of, note
 		if (/^note\s/.test(line)) continue;
@@ -137,15 +136,24 @@ export function fromMermaid<
 			if (from === to && parsed.isInternalAction) {
 				// No target for internal transitions
 				if (parsed.hasAction) {
-					transitionObj.action = null as any; // placeholder
+					transitionObj.action = null as unknown as TransitionObj<
+						TState,
+						TContext
+					>["action"]; // placeholder
 				}
 			} else {
 				transitionObj.target = to;
 				if (parsed.hasGuard) {
-					transitionObj.guard = null as any; // placeholder
+					transitionObj.guard = null as unknown as TransitionObj<
+						TState,
+						TContext
+					>["guard"]; // placeholder
 				}
 				if (parsed.hasAction) {
-					transitionObj.action = null as any; // placeholder
+					transitionObj.action = null as unknown as TransitionObj<
+						TState,
+						TContext
+					>["action"]; // placeholder
 				}
 			}
 
@@ -155,22 +163,24 @@ export function fromMermaid<
 	}
 
 	if (!initial) {
-		throw new Error('Invalid mermaid diagram: no initial state found ([*] --> State)');
+		throw new Error(
+			"Invalid mermaid diagram: no initial state found ([*] --> State)"
+		);
 	}
 
 	// Convert to FSM config format
-	const states: any = {};
+	// Using Record types for flexibility since we're building the config dynamically
+	const states: Record<string, { on: Record<string, unknown> }> = {};
 
 	for (const [stateName, transitions] of statesMap.entries()) {
-		const on: any = {};
+		const on: Record<string, unknown> = {};
 
 		for (const [event, transitionArray] of transitions.entries()) {
 			if (transitionArray.length === 1) {
 				const t = transitionArray[0];
 				// If it's a simple string target with no guards/actions and has a target
-				const hasOnlyTarget = t.target &&
-					t.guard === undefined &&
-					t.action === undefined;
+				const hasOnlyTarget =
+					t.target && t.guard === undefined && t.action === undefined;
 
 				if (hasOnlyTarget) {
 					on[event] = t.target;
@@ -189,7 +199,7 @@ export function fromMermaid<
 	return {
 		initial,
 		states,
-	};
+	} as FSMConfig<TState, TTransition, TContext>;
 }
 
 /**
@@ -200,9 +210,10 @@ export function fromMermaid<
  * - "* (any)"
  * - "event [guard N]"
  * - "event [guarded]"
+ * - "event [guard anything here]"
  * - "event / (action)"
  * - "event / (action internal)"
- * - "event [guard N] / (action)"
+ * - "event [guard ...] / (action)"
  * - "* (any) / (action)"
  */
 function parseLabel(label: string): {
@@ -226,7 +237,8 @@ function parseLabel(label: string): {
 	}
 
 	// Check for guard
-	const guardMatch = event.match(/\s*\[(guard(?:\s+\d+)?|guarded)\]$/);
+	// Supports: [guarded], [guard], [guard N], [guard anything here]
+	const guardMatch = event.match(/\s*\[(guard(?:\s+[^\]]+)?|guarded)\]$/);
 	if (guardMatch) {
 		hasGuard = true;
 		// Remove guard part from event

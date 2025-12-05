@@ -309,10 +309,10 @@ Parses a Mermaid stateDiagram-v2 notation into an FSM configuration object. This
 **Supported label formats:**
 - `event` - Simple transition
 - `* (any)` - Wildcard transition
-- `event [guard N]` or `event [guarded]` - Guarded transition
+- `event [guard N]`, `event [guarded]`, or `event [guard ...]` - Guarded transition
 - `event / (action)` - Transition with action
 - `event / (action internal)` - Internal transition (no state change)
-- `event [guard N] / (action)` - Guarded transition with action
+- `event [guard ...] / (action)` - Guarded transition with action
 
 **Ignored Mermaid features (non-FSM lines):**
 - YAML frontmatter (`---\nconfig: ...\n---`)
@@ -437,7 +437,7 @@ type PublishedState<TState> = {
 Arbitrary payload data passed during transitions.
 
 ```typescript
-type FSMPayload = any;
+type FSMPayload = unknown;
 ```
 
 ---
