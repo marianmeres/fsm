@@ -346,6 +346,66 @@ const fsm = new FSM(config);
 
 ---
 
+### `toTypeScript()`
+
+```typescript
+function toTypeScript(
+  mermaidDiagram: string,
+  options?: { indent?: string; configName?: string }
+): string
+```
+
+Generates TypeScript code from a Mermaid stateDiagram-v2 notation. This function outputs ready-to-paste TypeScript code with type definitions and TODO comments where guards and actions need to be implemented.
+
+**Parameters:**
+- `mermaidDiagram` - A Mermaid stateDiagram-v2 string
+- `options.indent` - Indentation string (default: `"\t"`)
+- `options.configName` - Variable name for the config (default: `"config"`)
+
+**Returns:** TypeScript code string containing:
+- Type definitions (`States`, `Transitions`, `Context`)
+- FSMConfig object with TODO placeholders for guards and actions
+
+**Example:**
+```typescript
+import { toTypeScript } from "@marianmeres/fsm";
+
+const tsCode = toTypeScript(`
+  stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> LOADING: fetch
+  LOADING --> SUCCESS: resolve [guard hasData]
+`);
+
+// Outputs:
+// type States = "IDLE" | "LOADING" | "SUCCESS";
+// type Transitions = "fetch" | "resolve";
+// type Context = { /* TODO: define your context */ };
+//
+// const config: FSMConfig<States, Transitions, Context> = {
+//   initial: "IDLE",
+//   // context: () => ({ /* TODO */ }),
+//   states: {
+//     IDLE: {
+//       on: {
+//         fetch: "LOADING",
+//       },
+//     },
+//     LOADING: {
+//       on: {
+//         resolve: {
+//           target: "SUCCESS",
+//           guard: (ctx) => true, // TODO: [guard hasData]
+//         },
+//       },
+//     },
+//     // ...
+//   },
+// };
+```
+
+---
+
 ## Types
 
 ### `FSMConfig<TState, TTransition, TContext>`

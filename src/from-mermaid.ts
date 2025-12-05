@@ -1,4 +1,214 @@
-import type { FSMConfig, TransitionObj } from "./fsm.ts";
+import type { FSMConfig, FSMPayload, TransitionObj } from "./fsm.ts";
+
+/**
+ * Generates TypeScript code from a Mermaid stateDiagram-v2 notation.
+ *
+ * This function parses the diagram and outputs ready-to-paste TypeScript code
+ * with TODO comments where guards and actions need to be implemented.
+ *
+ * @param mermaidDiagram - A Mermaid stateDiagram-v2 string
+ * @param options - Optional configuration
+ * @param options.indent - Indentation string (default: "\t")
+ * @param options.configName - Variable name for the config (default: "config")
+ * @returns TypeScript code string
+ *
+ * @example
+ * ```typescript
+ * const tsCode = toTypeScript(`
+ *   stateDiagram-v2
+ *   [*] --> IDLE
+ *   IDLE --> LOADING: load
+ *   LOADING --> SUCCESS: resolve [guard hasData]
+ * `);
+ * console.log(tsCode);
+ * // Outputs ready-to-paste TypeScript with type definitions and TODO placeholders
+ * ```
+ */
+export function toTypeScript(
+	mermaidDiagram: string,
+	options: { indent?: string; configName?: string } = {}
+): string {
+	const { indent = "\t", configName = "config" } = options;
+	const config = fromMermaid(mermaidDiagram);
+
+	// Collect all states and transitions
+	const states = new Set<string>();
+	const transitions = new Set<string>();
+
+	states.add(config.initial);
+	for (const [stateName, stateConfig] of Object.entries(config.states)) {
+		states.add(stateName);
+		for (const [event, def] of Object.entries(
+			(stateConfig as { on: Record<string, unknown> }).on
+		)) {
+			transitions.add(event);
+			// Also collect target states
+			if (typeof def === "string") {
+				states.add(def);
+			} else if (Array.isArray(def)) {
+				for (const t of def) {
+					if (t.target) states.add(t.target);
+				}
+			} else if (def && typeof def === "object" && "target" in def && def.target) {
+				states.add(def.target as string);
+			}
+		}
+	}
+
+	const statesUnion = Array.from(states)
+		.map((s) => `"${s}"`)
+		.join(" | ");
+	const transitionsUnion = Array.from(transitions)
+		.map((t) => `"${t}"`)
+		.join(" | ");
+
+	let out = "";
+
+	// Type definitions
+	out += `type States = ${statesUnion};\n`;
+	out += `type Transitions = ${transitionsUnion};\n`;
+	out += `type Context = { /* TODO: define your context */ };\n\n`;
+
+	// Config object
+	out += `const ${configName}: FSMConfig<States, Transitions, Context> = {\n`;
+	out += `${indent}initial: "${config.initial}",\n`;
+	out += `${indent}// context: () => ({ /* TODO */ }),\n`;
+	out += `${indent}states: {\n`;
+
+	for (const [stateName, stateConfig] of Object.entries(config.states)) {
+		const sc = stateConfig as { on: Record<string, unknown> };
+		out += `${indent}${indent}${stateName}: {\n`;
+		out += `${indent}${indent}${indent}on: {\n`;
+
+		for (const [event, def] of Object.entries(sc.on)) {
+			const eventKey = event === "*" ? '"*"' : event;
+			out += formatTransitionDef(eventKey, def, indent, 4);
+		}
+
+		out += `${indent}${indent}${indent}},\n`;
+		out += `${indent}${indent}},\n`;
+	}
+
+	out += `${indent}},\n`;
+	out += `};\n`;
+
+	return out;
+}
+
+function formatTransitionDef(
+	event: string,
+	def: unknown,
+	indent: string,
+	level: number
+): string {
+	const i = indent.repeat(level);
+	const i1 = indent.repeat(level + 1);
+
+	if (typeof def === "string") {
+		return `${i}${event}: "${def}",\n`;
+	}
+
+	if (Array.isArray(def)) {
+		let out = `${i}${event}: [\n`;
+		for (const t of def) {
+			out += formatSingleTransition(t, indent, level + 1);
+		}
+		out += `${i}],\n`;
+		return out;
+	}
+
+	// Single object
+	const t = def as TransitionObj<string, unknown> & {
+		guard?: { toJSON?: () => string };
+		action?: { toJSON?: () => string };
+	};
+
+	// Check if it's internal (no target)
+	if (!t.target) {
+		let out = `${i}${event}: {\n`;
+		if (t.action) {
+			out += `${i1}action: (ctx) => { /* TODO: implement action */ },\n`;
+		}
+		out += `${i}},\n`;
+		return out;
+	}
+
+	// Simple target with guard/action
+	const hasGuard = t.guard !== undefined;
+	const hasAction = t.action !== undefined;
+
+	if (!hasGuard && !hasAction) {
+		return `${i}${event}: "${t.target}",\n`;
+	}
+
+	let out = `${i}${event}: {\n`;
+	out += `${i1}target: "${t.target}",\n`;
+	if (hasGuard) {
+		const guardHint = t.guard?.toJSON?.() ?? "[guard]";
+		out += `${i1}guard: (ctx) => true, // TODO: ${guardHint}\n`;
+	}
+	if (hasAction) {
+		out += `${i1}action: (ctx) => { /* TODO: implement action */ },\n`;
+	}
+	out += `${i}},\n`;
+	return out;
+}
+
+function formatSingleTransition(
+	t: TransitionObj<string, unknown> & {
+		guard?: { toJSON?: () => string };
+		action?: { toJSON?: () => string };
+	},
+	indent: string,
+	level: number
+): string {
+	const i = indent.repeat(level);
+	const i1 = indent.repeat(level + 1);
+
+	let out = `${i}{\n`;
+
+	if (t.target) {
+		out += `${i1}target: "${t.target}",\n`;
+	}
+
+	if (t.guard) {
+		const guardHint = t.guard?.toJSON?.() ?? "[guard]";
+		out += `${i1}guard: (ctx) => true, // TODO: ${guardHint}\n`;
+	}
+
+	if (t.action) {
+		out += `${i1}action: (ctx) => { /* TODO: implement action */ },\n`;
+	}
+
+	out += `${i}},\n`;
+	return out;
+}
+
+/**
+ * Creates a placeholder guard function with toJSON for serialization.
+ * The guard always returns true and serializes to a descriptive string.
+ */
+function createPlaceholderGuard<TContext>(
+	notation: string | null
+): (context: Readonly<TContext>, payload?: FSMPayload) => boolean {
+	const guardFn = () => true;
+	(guardFn as unknown as { toJSON: () => string }).toJSON = () =>
+		`[GUARD: ${notation ?? "guarded"}]`;
+	return guardFn;
+}
+
+/**
+ * Creates a placeholder action function with toJSON for serialization.
+ * The action is a no-op and serializes to a descriptive string.
+ */
+function createPlaceholderAction<TContext>(): (
+	context: TContext,
+	payload?: FSMPayload
+) => void {
+	const actionFn = () => {};
+	(actionFn as unknown as { toJSON: () => string }).toJSON = () => "[ACTION]";
+	return actionFn;
+}
 
 /**
  * Parses a Mermaid stateDiagram-v2 notation into an FSM configuration object.
@@ -27,8 +237,8 @@ import type { FSMConfig, TransitionObj } from "./fsm.ts";
  * - Any other unrecognized lines
  *
  * **Limitations:**
- * - Guards are placeholder functions that log the notation and return `true`
- * - Actions are placeholder functions that log a message
+ * - Guards are placeholder functions that return `true` (with `toJSON()` for serialization)
+ * - Actions are placeholder no-op functions (with `toJSON()` for serialization)
  * - Cannot recreate `onEnter`/`onExit` hooks (not represented in Mermaid)
  * - Cannot infer context structure
  * - Type information must be provided via generics
@@ -137,23 +347,15 @@ export function fromMermaid<
 			if (from === to && parsed.isInternalAction) {
 				// No target for internal transitions
 				if (parsed.hasAction) {
-					transitionObj.action = () => {
-						console.log(`[fromMermaid] action placeholder`);
-					};
+					transitionObj.action = createPlaceholderAction();
 				}
 			} else {
 				transitionObj.target = to;
 				if (parsed.hasGuard) {
-					const notation = parsed.guardNotation;
-					transitionObj.guard = () => {
-						console.log(`[fromMermaid] guard placeholder: ${notation}`);
-						return true;
-					};
+					transitionObj.guard = createPlaceholderGuard(parsed.guardNotation);
 				}
 				if (parsed.hasAction) {
-					transitionObj.action = () => {
-						console.log(`[fromMermaid] action placeholder`);
-					};
+					transitionObj.action = createPlaceholderAction();
 				}
 			}
 

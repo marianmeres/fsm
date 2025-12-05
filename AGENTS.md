@@ -69,6 +69,7 @@ tests/
 | `FSM` | class | Main finite state machine class |
 | `createFsm` | function | Factory function (alias for `new FSM()`) |
 | `fromMermaid` | function | Parse Mermaid diagram to FSM config |
+| `toTypeScript` | function | Generate TypeScript code from Mermaid diagram |
 | `FSMConfig` | type | Constructor configuration type |
 | `FSMStatesConfigMap` | type | States configuration map type |
 | `FSMStatesConfigValue` | type | Single state configuration type |
@@ -131,10 +132,21 @@ Wildcard            → * (any)
 
 ### Parsing Limitations (fromMermaid)
 
-- Guards and actions become `null` placeholders
+- Guards and actions become placeholder functions (with `toJSON()` for serialization)
 - `onEnter`/`onExit` hooks not preserved
 - Context structure not inferred
 - Type information requires explicit generics
+
+### Code Generation (toTypeScript)
+
+```typescript
+toTypeScript(mermaidDiagram, { indent?: string, configName?: string }): string
+```
+
+Generates ready-to-paste TypeScript code with:
+- Type definitions (`States`, `Transitions`, `Context`)
+- FSMConfig object with TODO placeholders for guards and actions
+- Useful for diagram-driven development workflow
 
 ### Ignored Mermaid Features (fromMermaid)
 

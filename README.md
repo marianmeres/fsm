@@ -159,7 +159,55 @@ You can export an FSM to Mermaid and parse it back:
 const fsm2 = FSM.fromMermaid(fsm.toMermaid());
 ```
 
-**Note:** Guards and actions become `null` placeholders when parsing from Mermaid (since diagrams only capture structure, not logic). Lifecycle hooks (`onEnter`/`onExit`) are also not preserved.
+**Note:** Guards and actions become placeholder functions when parsing from Mermaid (since diagrams only capture structure, not logic). Lifecycle hooks (`onEnter`/`onExit`) are also not preserved.
+
+### Generating TypeScript Code (`toTypeScript`)
+
+For a complete workflow where you design visually and implement in code, use `toTypeScript` to generate ready-to-paste TypeScript with TODO placeholders:
+
+```typescript
+import { toTypeScript } from "@marianmeres/fsm";
+
+const tsCode = toTypeScript(`
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> LOADING: fetch
+    LOADING --> SUCCESS: resolve [guard hasData]
+    LOADING --> ERROR: reject
+`);
+console.log(tsCode);
+```
+
+Output:
+```typescript
+type States = "IDLE" | "LOADING" | "SUCCESS" | "ERROR";
+type Transitions = "fetch" | "resolve" | "reject";
+type Context = { /* TODO: define your context */ };
+
+const config: FSMConfig<States, Transitions, Context> = {
+	initial: "IDLE",
+	// context: () => ({ /* TODO */ }),
+	states: {
+		IDLE: {
+			on: {
+				fetch: "LOADING",
+			},
+		},
+		LOADING: {
+			on: {
+				resolve: {
+					target: "SUCCESS",
+					guard: (ctx) => true, // TODO: [guard hasData]
+				},
+				reject: "ERROR",
+			},
+		},
+		// ... rest of states
+	},
+};
+```
+
+This is useful for **diagram-driven development**: design your state machine visually, generate the TypeScript skeleton, then implement the guards and actions.
 
 ### Complex Diagram Support
 
