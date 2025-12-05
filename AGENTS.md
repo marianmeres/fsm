@@ -29,6 +29,8 @@ tests/
 {
   initial: string,           // Required: initial state name
   context?: T | () => T,     // Optional: shared data or factory function
+  debug?: boolean,           // Optional: enable debug logging (default: false)
+  logger?: Logger,           // Optional: custom logger (default: console)
   states: {
     [stateName: string]: {
       onEnter?: (ctx, payload) => void,   // Lifecycle: entering state
@@ -74,6 +76,7 @@ tests/
 | `TransitionObj` | type | Transition object with target/guard/action |
 | `PublishedState` | type | Subscriber callback data type |
 | `FSMPayload` | type | Transition payload type (unknown) |
+| `Logger` | interface | Logger interface for debug output |
 
 ### FSM Class Methods
 
@@ -181,6 +184,32 @@ FSM<TState, TTransition, TContext>
 - `transition()` returns current state when `assert=false`
 - `fromMermaid()` throws on invalid diagram format
 - Guards evaluated against cloned context (safe from mutation)
+
+## Debug Logging
+
+Enable debug mode to log FSM operations:
+
+```typescript
+const fsm = new FSM({
+  initial: "IDLE",
+  debug: true,           // Enable debug logging
+  logger: customLogger,  // Optional: custom Logger implementation
+  states: { ... }
+});
+```
+
+### Logger Interface
+
+```typescript
+interface Logger {
+  debug: (...args: unknown[]) => string;
+  log: (...args: unknown[]) => string;
+  warn: (...args: unknown[]) => string;
+  error: (...args: unknown[]) => string;
+}
+```
+
+Compatible with `console` and `@marianmeres/clog`.
 
 ## Testing Patterns
 

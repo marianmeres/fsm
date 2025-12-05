@@ -39,6 +39,8 @@ Creates a new FSM instance.
   - `initial: TState` - The initial state name
   - `states: FSMStatesConfigMap` - Map of state names to their configurations
   - `context?: TContext | (() => TContext)` - Optional context value or factory function
+  - `debug?: boolean` - Enable debug logging (default: `false`)
+  - `logger?: Logger` - Custom logger implementing Logger interface (default: console)
 
 **Example:**
 ```typescript
@@ -355,6 +357,8 @@ type FSMConfig<TState, TTransition, TContext> = {
   initial: TState;
   states: FSMStatesConfigMap<TState, TTransition, TContext>;
   context?: TContext | (() => TContext);
+  debug?: boolean;
+  logger?: Logger;
 };
 ```
 
@@ -449,3 +453,20 @@ Function returned by `subscribe()` to stop receiving updates.
 ```typescript
 type Unsubscriber = () => void;
 ```
+
+---
+
+### `Logger`
+
+Logger interface compatible with console and `@marianmeres/clog`.
+
+```typescript
+interface Logger {
+  debug: (...args: unknown[]) => string;
+  log: (...args: unknown[]) => string;
+  warn: (...args: unknown[]) => string;
+  error: (...args: unknown[]) => string;
+}
+```
+
+All methods accept variadic arguments and return a string (first argument converted to string). The FSM uses only the `debug` method for logging when `debug: true` is set.

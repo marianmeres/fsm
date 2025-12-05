@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { createFsm, FSM } from "../src/fsm.ts";
+import { createFsm, FSM, type Logger } from "../src/fsm.ts";
 
 Deno.test("basic", () => {
 	type STATES = "ON" | "OFF";
@@ -376,4 +376,84 @@ Deno.test("canTransition with wildcards", () => {
 	// State B: wildcard catches everything
 	assertEquals(fsm.canTransition("go"), true);
 	assertEquals(fsm.canTransition("anything"), true);
+});
+
+Deno.test("custom logger with debug mode", () => {
+	type STATES = "IDLE" | "ACTIVE";
+	type TRANSITIONS = "start" | "stop";
+
+	const debugLog: string[] = [];
+
+	// Custom logger that captures debug messages
+	const customLogger: Logger = {
+		debug: (...args: unknown[]) => {
+			debugLog.push(args.map(String).join(" "));
+			return String(args[0] ?? "");
+		},
+		log: (...args: unknown[]) => String(args[0] ?? ""),
+		warn: (...args: unknown[]) => String(args[0] ?? ""),
+		error: (...args: unknown[]) => String(args[0] ?? ""),
+	};
+
+	const fsm = new FSM<STATES, TRANSITIONS>({
+		initial: "IDLE",
+		debug: true,
+		logger: customLogger,
+		states: {
+			IDLE: { on: { start: "ACTIVE" } },
+			ACTIVE: { on: { stop: "IDLE" } },
+		},
+	});
+
+	// Constructor logs creation
+	assertEquals(debugLog.length >= 1, true);
+	assertEquals(debugLog[0].includes("FSM created"), true);
+
+	// Clear log and test transition
+	debugLog.length = 0;
+	fsm.transition("start");
+
+	// Should have logged transition info
+	assertEquals(debugLog.length >= 1, true);
+	assertEquals(debugLog.some((msg) => msg.includes('transition("start")')), true);
+
+	// Test canTransition logging
+	debugLog.length = 0;
+	fsm.canTransition("stop");
+	assertEquals(debugLog.some((msg) => msg.includes('canTransition("stop")')), true);
+
+	// Test reset logging
+	debugLog.length = 0;
+	fsm.reset();
+	assertEquals(debugLog.some((msg) => msg.includes("reset()")), true);
+});
+
+Deno.test("debug mode disabled by default", () => {
+	const debugLog: string[] = [];
+
+	const customLogger: Logger = {
+		debug: (...args: unknown[]) => {
+			debugLog.push(args.map(String).join(" "));
+			return String(args[0] ?? "");
+		},
+		log: (...args: unknown[]) => String(args[0] ?? ""),
+		warn: (...args: unknown[]) => String(args[0] ?? ""),
+		error: (...args: unknown[]) => String(args[0] ?? ""),
+	};
+
+	const fsm = new FSM({
+		initial: "OFF",
+		logger: customLogger, // logger provided but debug is false
+		states: {
+			OFF: { on: { toggle: "ON" } },
+			ON: { on: { toggle: "OFF" } },
+		},
+	});
+
+	fsm.transition("toggle");
+	fsm.canTransition("toggle");
+	fsm.reset();
+
+	// No debug messages should be logged when debug is false
+	assertEquals(debugLog.length, 0);
 });

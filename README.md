@@ -320,6 +320,42 @@ context: { count: 0, increment: () => {} }
 
 For mutations, use **action hooks** (`action`, `onEnter`, `onExit`) which are designed for side effects. For helper functions, define them outside the FSM and pass context as parameters.
 
+## Debug Logging
+
+Enable debug mode to log FSM operations for troubleshooting:
+
+```typescript
+const fsm = new FSM({
+    initial: "IDLE",
+    debug: true,  // Enable debug logging
+    states: { ... }
+});
+```
+
+Debug logging covers FSM creation, transitions, guard evaluations, lifecycle hooks, and reset operations. Messages are output via `console.debug` by default.
+
+### Custom Logger
+
+You can provide a custom logger implementing the `Logger` interface (compatible with `@marianmeres/clog`):
+
+```typescript
+import { FSM, type Logger } from "@marianmeres/fsm";
+
+const customLogger: Logger = {
+    debug: (...args) => { /* ... */ return String(args[0] ?? ""); },
+    log: (...args) => { /* ... */ return String(args[0] ?? ""); },
+    warn: (...args) => { /* ... */ return String(args[0] ?? ""); },
+    error: (...args) => { /* ... */ return String(args[0] ?? ""); },
+};
+
+const fsm = new FSM({
+    initial: "IDLE",
+    debug: true,
+    logger: customLogger,
+    states: { ... }
+});
+```
+
 ## API Reference
 
 For complete API documentation including all types, methods, and detailed parameter descriptions, see [API.md](API.md).

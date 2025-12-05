@@ -41,11 +41,11 @@ Deno.test("with guards and actions", () => {
 
 	const [first, second] = rejectTransitions as TransitionObj<string, unknown>[];
 	assertEquals(first.target, "RETRYING");
-	assertEquals(first.guard, null); // placeholder
-	assertEquals(first.action, null); // placeholder
+	assertEquals(typeof first.guard, "function"); // placeholder function
+	assertEquals(typeof first.action, "function"); // placeholder function
 
 	assertEquals(second.target, "FAILED");
-	assertEquals(second.guard, null); // placeholder
+	assertEquals(typeof second.guard, "function"); // placeholder function
 	assertEquals(second.action, undefined);
 });
 
@@ -62,7 +62,7 @@ Deno.test("internal transitions", () => {
 	const volumeUp = config.states.PLAYING.on.volume_up as TransitionObj<string, unknown>;
 	assertEquals(typeof volumeUp, "object");
 	assertEquals(volumeUp.target, undefined);
-	assertEquals(volumeUp.action, null); // placeholder
+	assertEquals(typeof volumeUp.action, "function"); // placeholder function
 });
 
 Deno.test("wildcard transitions", () => {
@@ -82,7 +82,7 @@ Deno.test("wildcard transitions", () => {
 	const activeWildcard = config.states.ACTIVE.on["*"] as TransitionObj<string, unknown>;
 	assertEquals(typeof activeWildcard, "object");
 	assertEquals(activeWildcard.target, "ERROR");
-	assertEquals(activeWildcard.action, null); // placeholder
+	assertEquals(typeof activeWildcard.action, "function"); // placeholder function
 
 	// Wildcard without action
 	assertEquals(config.states.ERROR.on["*"], "IDLE");
@@ -105,16 +105,16 @@ Deno.test("various label formats", () => {
 
 	const guarded = config.states.B.on.guarded as TransitionObj<string, unknown>;
 	assertEquals(guarded.target, "C");
-	assertEquals(guarded.guard, null);
+	assertEquals(typeof guarded.guard, "function"); // placeholder function
 
 	const withAction = config.states.C.on.with_action as TransitionObj<string, unknown>;
 	assertEquals(withAction.target, "D");
-	assertEquals(withAction.action, null);
+	assertEquals(typeof withAction.action, "function"); // placeholder function
 
 	const guardedAction = config.states.D.on.guarded_action as TransitionObj<string, unknown>;
 	assertEquals(guardedAction.target, "E");
-	assertEquals(guardedAction.guard, null);
-	assertEquals(guardedAction.action, null);
+	assertEquals(typeof guardedAction.guard, "function"); // placeholder function
+	assertEquals(typeof guardedAction.action, "function"); // placeholder function
 });
 
 Deno.test("invalid: missing header", () => {
@@ -248,17 +248,21 @@ Deno.test("roundtrip with wildcards", () => {
 
 	// First parse should have action placeholder
 	assertEquals(typeof config1.states.ACTIVE.on["*"], "object");
-	assertEquals((config1.states.ACTIVE.on["*"] as TransitionObj<string, unknown>).action, null);
+	assertEquals(typeof (config1.states.ACTIVE.on["*"] as TransitionObj<string, unknown>).action, "function");
 
-	// toMermaid won't output the action since it's null, so roundtrip won't preserve it
+	// toMermaid outputs the action since it's a function now
 	const fsm = new FSM(config1);
 	const mermaid2 = fsm.toMermaid();
 	const config2 = fromMermaid(mermaid2);
 
-	// After roundtrip, the action info is lost (becomes simple string)
+	// After roundtrip, action structure is preserved
 	assertEquals(config2.initial, "IDLE");
 	assertEquals(config2.states.IDLE.on.start, "ACTIVE");
-	assertEquals(config2.states.ACTIVE.on["*"], "ERROR"); // Now simple string
+	// ACTIVE has action, so it stays as object
+	const activeWildcard = config2.states.ACTIVE.on["*"] as TransitionObj<string, unknown>;
+	assertEquals(activeWildcard.target, "ERROR");
+	assertEquals(typeof activeWildcard.action, "function");
+	// ERROR has no action, so it becomes simple string
 	assertEquals(config2.states.ERROR.on["*"], "IDLE");
 });
 
@@ -274,17 +278,18 @@ Deno.test("roundtrip with internal transitions", () => {
 	// First parse should have internal action structure
 	const volumeUp = config1.states.PLAYING.on.volume_up as TransitionObj<string, unknown>;
 	assertEquals(volumeUp.target, undefined);
-	assertEquals(volumeUp.action, null);
+	assertEquals(typeof volumeUp.action, "function"); // placeholder function
 
-	// toMermaid won't output action marker when action is null
-	// So internal transitions become regular self-transitions in roundtrip
+	// toMermaid outputs internal action marker since action is now a function
 	const fsm = new FSM(config1);
 	const mermaid2 = fsm.toMermaid();
 	const config2 = fromMermaid(mermaid2);
 
-	// After roundtrip, becomes a simple self-transition (info is lost)
+	// After roundtrip, internal action structure is preserved
 	assertEquals(config2.initial, "PLAYING");
-	assertEquals(config2.states.PLAYING.on.volume_up, "PLAYING"); // Now simple string
+	const volumeUp2 = config2.states.PLAYING.on.volume_up as TransitionObj<string, unknown>;
+	assertEquals(volumeUp2.target, undefined); // Still internal (no target)
+	assertEquals(typeof volumeUp2.action, "function");
 	assertEquals(config2.states.PLAYING.on.stop, "STOPPED");
 });
 
@@ -491,7 +496,7 @@ Deno.test("complex diagram with multiple ignored features", () => {
 	// Internal transition for emergency on RED
 	const emergency = config.states.RED.on.emergency as TransitionObj<string, unknown>;
 	assertEquals(emergency.target, undefined);
-	assertEquals(emergency.action, null);
+	assertEquals(typeof emergency.action, "function"); // placeholder function
 
 	// External transitions for emergency on other states
 	assertEquals(config.states.GREEN.on.emergency, "RED");
@@ -541,14 +546,14 @@ Deno.test("extended guard notation with expressions", () => {
 
 	// First guard: amount < price
 	assertEquals(first.target, "APPROVED");
-	assertEquals(first.guard, null); // placeholder
+	assertEquals(typeof first.guard, "function"); // placeholder function
 
 	// Second guard: amount >= price
 	assertEquals(second.target, "REJECTED");
-	assertEquals(second.guard, null); // placeholder
+	assertEquals(typeof second.guard, "function"); // placeholder function
 
 	// Third guard with action: user.isPremium && amount > 1000
 	assertEquals(third.target, "PREMIUM");
-	assertEquals(third.guard, null); // placeholder
-	assertEquals(third.action, null); // placeholder
+	assertEquals(typeof third.guard, "function"); // placeholder function
+	assertEquals(typeof third.action, "function"); // placeholder function
 });

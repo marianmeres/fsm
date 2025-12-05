@@ -27,7 +27,8 @@ import type { FSMConfig, TransitionObj } from "./fsm.ts";
  * - Any other unrecognized lines
  *
  * **Limitations:**
- * - Cannot recreate actual guard/action functions (sets them to `null` as placeholders)
+ * - Guards are placeholder functions that log the notation and return `true`
+ * - Actions are placeholder functions that log a message
  * - Cannot recreate `onEnter`/`onExit` hooks (not represented in Mermaid)
  * - Cannot infer context structure
  * - Type information must be provided via generics
@@ -136,24 +137,23 @@ export function fromMermaid<
 			if (from === to && parsed.isInternalAction) {
 				// No target for internal transitions
 				if (parsed.hasAction) {
-					transitionObj.action = null as unknown as TransitionObj<
-						TState,
-						TContext
-					>["action"]; // placeholder
+					transitionObj.action = () => {
+						console.log(`[fromMermaid] action placeholder`);
+					};
 				}
 			} else {
 				transitionObj.target = to;
 				if (parsed.hasGuard) {
-					transitionObj.guard = null as unknown as TransitionObj<
-						TState,
-						TContext
-					>["guard"]; // placeholder
+					const notation = parsed.guardNotation;
+					transitionObj.guard = () => {
+						console.log(`[fromMermaid] guard placeholder: ${notation}`);
+						return true;
+					};
 				}
 				if (parsed.hasAction) {
-					transitionObj.action = null as unknown as TransitionObj<
-						TState,
-						TContext
-					>["action"]; // placeholder
+					transitionObj.action = () => {
+						console.log(`[fromMermaid] action placeholder`);
+					};
 				}
 			}
 
@@ -219,11 +219,13 @@ export function fromMermaid<
 function parseLabel(label: string): {
 	event: string;
 	hasGuard: boolean;
+	guardNotation: string | null;
 	hasAction: boolean;
 	isInternalAction: boolean;
 } {
 	let event = label;
 	let hasGuard = false;
+	let guardNotation: string | null = null;
 	let hasAction = false;
 	let isInternalAction = false;
 
@@ -241,6 +243,7 @@ function parseLabel(label: string): {
 	const guardMatch = event.match(/\s*\[(guard(?:\s+[^\]]+)?|guarded)\]$/);
 	if (guardMatch) {
 		hasGuard = true;
+		guardNotation = guardMatch[0].trim(); // e.g., "[guard amount < price]"
 		// Remove guard part from event
 		event = event.substring(0, guardMatch.index).trim();
 	}
@@ -250,5 +253,5 @@ function parseLabel(label: string): {
 		event = "*";
 	}
 
-	return { event, hasGuard, hasAction, isInternalAction };
+	return { event, hasGuard, guardNotation, hasAction, isInternalAction };
 }
