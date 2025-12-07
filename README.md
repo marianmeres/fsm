@@ -209,10 +209,9 @@ const config: FSMConfig<States, Transitions, Context> = {
 
 This is useful for **diagram-driven development**: design your state machine visually, generate the TypeScript skeleton, then implement the guards and actions.
 
-You can automate this process even further by combining deno task with optional `pbcopy`, E.g.:
+You can automate this process even further by combining deno task with optional `pbcopy`. For example:
 
 ```json
-// deno.json
 {
     "tasks": {
         "mermaid-to-typescript": "deno run -A jsr:@marianmeres/fsm/mermaid-to-typescript"
