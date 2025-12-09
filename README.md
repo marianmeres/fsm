@@ -404,18 +404,12 @@ You can provide a custom logger implementing the `Logger` interface (compatible 
 
 ```typescript
 import { FSM, type Logger } from "@marianmeres/fsm";
-
-const customLogger: Logger = {
-    debug: (...args) => { /* ... */ return String(args[0] ?? ""); },
-    log: (...args) => { /* ... */ return String(args[0] ?? ""); },
-    warn: (...args) => { /* ... */ return String(args[0] ?? ""); },
-    error: (...args) => { /* ... */ return String(args[0] ?? ""); },
-};
+import { createClog } from "@marianmeres/clog";
 
 const fsm = new FSM({
     initial: "IDLE",
     debug: true,
-    logger: customLogger,
+    logger: createClog('my-app-fsm'), // see @marianmeres/clog for more
     states: { ... }
 });
 ```
