@@ -9,6 +9,7 @@
 - [Factory Function](#factory-function)
 - [Static Methods](#static-methods)
 - [Mermaid Parser](#mermaid-parser)
+- [Configuration Composition](#configuration-composition)
 - [Types](#types)
 
 ---
@@ -403,6 +404,135 @@ const tsCode = toTypeScript(`
 //     // ...
 //   },
 // };
+```
+
+---
+
+## Configuration Composition
+
+### `composeFsmConfig()`
+
+```typescript
+function composeFsmConfig<TState, TTransition, TContext>(
+  fragments: (FSMConfigFragment<TState, TTransition, TContext> | false | null | undefined)[],
+  options?: ComposeFsmConfigOptions
+): FSMConfig<TState, TTransition, TContext>
+```
+
+Composes multiple FSM configuration fragments into a single configuration. This enables building complex FSMs from reusable building blocks.
+
+**Type Parameters:**
+- `TState extends string` - Union type of all possible state names
+- `TTransition extends string` - Union type of all possible transition event names
+- `TContext` - Type of the FSM context object
+
+**Parameters:**
+- `fragments` - Array of FSM config fragments. Falsy values (`false`, `null`, `undefined`) are filtered out, enabling conditional inclusion
+- `options` - Optional composition options
+
+**Returns:** A merged `FSMConfig` ready to pass to `createFsm()` or `new FSM()`.
+
+**Throws:**
+- Error if no valid fragments are provided
+- Error if no `initial` state is defined in any fragment
+- Error if `onConflict: "error"` and multiple fragments define conflicting values
+
+**Example:**
+```typescript
+import { composeFsmConfig, createFsm, type FSMConfigFragment } from "@marianmeres/fsm";
+
+type States = "IDLE" | "LOADING" | "ERROR";
+type Events = "fetch" | "resolve" | "reject";
+
+const core: FSMConfigFragment<States, Events, unknown> = {
+  initial: "IDLE",
+  states: {
+    IDLE: { on: { fetch: "LOADING" } },
+    LOADING: { on: { resolve: "IDLE", reject: "ERROR" } },
+  },
+};
+
+const errorHandling: FSMConfigFragment<States, Events, unknown> = {
+  states: {
+    ERROR: { on: { fetch: "LOADING" } },
+  },
+};
+
+const config = composeFsmConfig([core, errorHandling]);
+const fsm = createFsm(config);
+```
+
+---
+
+### `FSMConfigFragment<TState, TTransition, TContext>`
+
+A partial FSM configuration fragment for composition. All fields are optional to allow building configs piece by piece.
+
+```typescript
+type FSMConfigFragment<TState, TTransition, TContext> = {
+  initial?: TState;
+  states?: {
+    [K in TState]?: Partial<FSMStatesConfigValue<TState, TTransition, TContext>>;
+  };
+  context?: TContext | (() => TContext);
+  debug?: boolean;
+};
+```
+
+Unlike `FSMConfig`, fragments:
+- Don't require `initial` (but at least one fragment must define it)
+- Don't require all states to be defined
+- Can partially define state configurations (e.g., only `on` transitions)
+
+---
+
+### `ComposeFsmConfigOptions`
+
+Options for controlling how fragments are composed.
+
+```typescript
+type ComposeFsmConfigOptions = {
+  hooks?: "replace" | "compose";
+  context?: "merge" | "replace";
+  onConflict?: "last-wins" | "error";
+};
+```
+
+**Properties:**
+
+| Option | Values | Default | Description |
+|--------|--------|---------|-------------|
+| `hooks` | `"replace"` | `"replace"` | Later fragments override earlier hooks |
+| | `"compose"` | | All hooks run sequentially in fragment order |
+| `context` | `"merge"` | `"merge"` | Shallow-merge context from all fragments |
+| | `"replace"` | | Later fragments completely override earlier context |
+| `onConflict` | `"last-wins"` | `"last-wins"` | Later fragments override `initial` |
+| | `"error"` | | Throw if multiple fragments define different `initial` values |
+
+**Context Merging:**
+
+When using `context: "merge"` (the default), context objects from all fragments are shallow-merged in order. This works with both static objects and factory functions:
+
+```typescript
+const f1 = { context: { a: 1, shared: "from-f1" } };
+const f2 = { context: () => ({ b: 2, shared: "from-f2" }) };
+
+const config = composeFsmConfig([f1, f2]);
+// Resulting context: { a: 1, b: 2, shared: "from-f2" }
+```
+
+The merged context is always wrapped in a factory function to ensure proper reset behavior.
+
+**Example with options:**
+```typescript
+const config = composeFsmConfig(
+  [fragment1, fragment2],
+  {
+    hooks: "compose",      // Both fragments' onEnter/onExit run
+    context: "merge",      // Merge context from all fragments (default)
+    onConflict: "error"    // Throw if both define different 'initial'
+  }
+);
 ```
 
 ---

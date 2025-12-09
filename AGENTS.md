@@ -13,12 +13,14 @@
 
 ```
 src/
-├── mod.ts           # Re-exports all public API
-├── fsm.ts           # Main FSM class and types
-└── from-mermaid.ts  # Mermaid diagram parser
+├── mod.ts                 # Re-exports all public API
+├── fsm.ts                 # Main FSM class and types
+├── from-mermaid.ts        # Mermaid diagram parser
+└── compose-fsm-config.ts  # Configuration composition helper
 tests/
-├── fsm.test.ts           # FSM core tests
-└── from-mermaid.test.ts  # Mermaid parser tests
+├── fsm.test.ts                 # FSM core tests
+├── from-mermaid.test.ts        # Mermaid parser tests
+└── compose-fsm-config.test.ts  # Composition tests
 ```
 
 ## Core Concepts
@@ -70,6 +72,7 @@ tests/
 | `createFsm` | function | Factory function (alias for `new FSM()`) |
 | `fromMermaid` | function | Parse Mermaid diagram to FSM config |
 | `toTypeScript` | function | Generate TypeScript code from Mermaid diagram |
+| `composeFsmConfig` | function | Compose multiple config fragments into one |
 | `FSMConfig` | type | Constructor configuration type |
 | `FSMStatesConfigMap` | type | States configuration map type |
 | `FSMStatesConfigValue` | type | Single state configuration type |
@@ -77,6 +80,8 @@ tests/
 | `TransitionObj` | type | Transition object with target/guard/action |
 | `PublishedState` | type | Subscriber callback data type |
 | `FSMPayload` | type | Transition payload type (unknown) |
+| `FSMConfigFragment` | type | Partial config for composition |
+| `ComposeFsmConfigOptions` | type | Options for composeFsmConfig |
 | `Logger` | interface | Logger interface for debug output |
 
 ### FSM Class Methods
@@ -287,3 +292,38 @@ assertEquals(fsm.is("INITIAL_STATE"), true);
   }
 }
 ```
+
+### Configuration Composition
+
+```typescript
+import { composeFsmConfig, type FSMConfigFragment } from "@marianmeres/fsm";
+
+// Core fragment
+const core: FSMConfigFragment<States, Events, Context> = {
+  initial: "IDLE",
+  states: {
+    IDLE: { on: { fetch: "LOADING" } },
+    LOADING: { on: { resolve: "SUCCESS", reject: "ERROR" } },
+  },
+};
+
+// Optional feature fragment
+const retryFeature: FSMConfigFragment<States, Events, Context> = {
+  states: {
+    ERROR: { on: { retry: "LOADING" } },
+  },
+};
+
+// Compose with conditional inclusion
+const config = composeFsmConfig([
+  core,
+  featureEnabled && retryFeature,
+]);
+```
+
+**Composition Rules:**
+- Falsy values in array are filtered out (enables conditional fragments)
+- `initial`: Last fragment wins (or error with `onConflict: "error"`)
+- `context`: Shallow-merged by default (or replaced with `context: "replace"`)
+- `states.X.on`: Shallow-merged (later transitions override earlier)
+- `onEnter`/`onExit`: Replaced by default, or chained with `hooks: "compose"`

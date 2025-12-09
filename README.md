@@ -420,6 +420,103 @@ const fsm = new FSM({
 });
 ```
 
+## Configuration Composition
+
+When building complex applications, you may need FSMs that share common behavior but differ in certain areas. For example, a data-fetching FSM might optionally support retry logic, or different user roles might enable different state branches.
+
+The `composeFsmConfig` helper allows you to build FSM configurations from reusable fragments that are merged together at runtime. This helper is completely standalone from the FSM core - it simply produces a valid `FSMConfig` object before it reaches the FSM constructor.
+
+### Motivation
+
+- **Reusability**: Define core state logic once, extend it for different use cases
+- **Conditional features**: Include or exclude entire state branches based on runtime conditions
+- **Separation of concerns**: Keep feature-specific states in dedicated fragments
+
+### Basic Usage
+
+```typescript
+import { composeFsmConfig, createFsm, type FSMConfigFragment } from "@marianmeres/fsm";
+
+type States = "IDLE" | "LOADING" | "SUCCESS" | "ERROR" | "RETRYING";
+type Events = "fetch" | "resolve" | "reject" | "retry" | "reset";
+type Context = { attempts: number; maxRetries: number };
+
+// Core fetch flow - always included
+const coreFetch: FSMConfigFragment<States, Events, Context> = {
+    initial: "IDLE",
+    context: { attempts: 0, maxRetries: 3 },
+    states: {
+        IDLE: { on: { fetch: "LOADING" } },
+        LOADING: { on: { resolve: "SUCCESS", reject: "ERROR" } },
+        SUCCESS: { on: { reset: "IDLE" } },
+        ERROR: { on: { reset: "IDLE" } },
+    },
+};
+
+// Optional retry feature - conditionally included
+const retryFeature: FSMConfigFragment<States, Events, Context> = {
+    states: {
+        ERROR: {
+            on: {
+                retry: {
+                    target: "RETRYING",
+                    guard: (ctx) => ctx.attempts < ctx.maxRetries,
+                },
+            },
+        },
+        RETRYING: {
+            onEnter: (ctx) => ctx.attempts++,
+            on: { resolve: "SUCCESS", reject: "ERROR" },
+        },
+    },
+};
+
+// Compose based on feature flag
+const enableRetry = true;
+const config = composeFsmConfig([coreFetch, enableRetry && retryFeature]);
+const fsm = createFsm(config);
+```
+
+### Merge Behavior
+
+Understanding how fragments merge is important:
+
+| Property | Behavior |
+|----------|----------|
+| `initial` | Last fragment defining it wins |
+| `context` | Shallow-merged by default (configurable) |
+| `states.X.on` | Transitions are shallow-merged (later overrides earlier) |
+| `states.X.onEnter/onExit` | Configurable via `hooks` option |
+
+### Options
+
+```typescript
+composeFsmConfig([...fragments], {
+    hooks: "replace" | "compose",     // default: "replace"
+    context: "merge" | "replace",     // default: "merge"
+    onConflict: "last-wins" | "error" // default: "last-wins"
+});
+```
+
+- **`hooks: "replace"`** (default): Later fragment's hooks override earlier ones
+- **`hooks: "compose"`**: All hooks run sequentially in fragment order
+- **`context: "merge"`** (default): Shallow-merge context from all fragments
+- **`context: "replace"`**: Later fragment's context completely overrides earlier
+- **`onConflict: "error"`**: Throws if multiple fragments define different `initial` values
+
+### Conditional Fragments
+
+Falsy values are automatically filtered out, enabling clean conditional inclusion:
+
+```typescript
+const config = composeFsmConfig([
+    coreFragment,
+    userIsAdmin && adminFeatures,
+    featureFlags.retryEnabled && retryFeature,
+    debugMode && debugFragment,
+]);
+```
+
 ## API Reference
 
 For complete API documentation including all types, methods, and detailed parameter descriptions, see [API.md](API.md).
