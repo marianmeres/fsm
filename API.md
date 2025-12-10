@@ -83,6 +83,22 @@ readonly config: FSMConfig<TState, TTransition, TContext>
 
 The original configuration object passed to the constructor.
 
+#### `debug`
+
+```typescript
+get debug(): boolean
+```
+
+Returns whether debug mode is enabled. Useful for inspecting FSM configuration after instantiation.
+
+#### `logger`
+
+```typescript
+get logger(): Logger
+```
+
+Returns the logger instance used by this FSM. Default is `console`. See [Logger](#logger) interface for details.
+
 ---
 
 ### Methods

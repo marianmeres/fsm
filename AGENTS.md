@@ -92,6 +92,8 @@ tests/
 | `state` | `get state(): TState` | Get current state (non-reactive) |
 | `context` | `TContext` | Mutable context object |
 | `config` | `readonly FSMConfig` | Original configuration |
+| `debug` | `get debug(): boolean` | Get debug mode status |
+| `logger` | `get logger(): Logger` | Get logger instance |
 | `subscribe` | `(cb) => Unsubscriber` | Subscribe to state changes |
 | `transition` | `(event, payload?, assert?) => TState \| null` | Execute transition |
 | `canTransition` | `(event, payload?) => boolean` | Check if transition is valid |

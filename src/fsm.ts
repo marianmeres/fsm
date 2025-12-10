@@ -268,6 +268,22 @@ export class FSM<
 	}
 
 	/**
+	 * Returns whether debug mode is enabled.
+	 * @returns `true` if debug logging is active, `false` otherwise
+	 */
+	get debug(): boolean {
+		return this.#debug;
+	}
+
+	/**
+	 * Returns the logger instance used by this FSM.
+	 * @returns The Logger instance (default: console)
+	 */
+	get logger(): Logger {
+		return this.#logger;
+	}
+
+	/**
 	 * Returns the current state of the FSM.
 	 * This is a non-reactive getter; use `subscribe()` for reactive updates.
 	 * @returns The current state name
