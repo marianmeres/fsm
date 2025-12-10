@@ -1,17 +1,29 @@
 #!/usr/bin/env -S deno run --allow-read
 /**
+ * @module
+ *
  * CLI script to convert a Mermaid stateDiagram-v2 file to TypeScript FSM config.
  *
- * Usage:
- *   deno run --allow-read scripts/mermaid-to-typescript.ts --infile path/to/diagram.mermaid
- *   deno run --allow-read scripts/mermaid-to-typescript.ts --infile path/to/diagram.mermaid | pbcopy
+ * This CLI tool enables diagram-driven development by converting visual Mermaid
+ * state diagrams into ready-to-use TypeScript FSM configurations with TODO placeholders.
+ *
+ * @example Usage via deno task
+ * ```sh
+ * deno task mermaid-to-typescript --infile my-fsm.mermaid
+ * deno task mermaid-to-typescript --infile my-fsm.mermaid | pbcopy
+ * ```
+ *
+ * @example Direct usage
+ * ```sh
+ * deno run --allow-read jsr:@marianmeres/fsm/mermaid-to-typescript --infile diagram.mermaid
+ * ```
  *
  * Options:
- *   --infile <path>   Path to the Mermaid diagram file (required)
- *   --json            Output JSON instead of TypeScript (uses JSON.stringify on parsed config)
- *   --indent <str>    Indentation for TypeScript output (default: "\t")
- *   --name <str>      Config variable name for TypeScript output (default: "config")
- *   --help            Show this help message
+ * - `--infile <path>` - Path to the Mermaid diagram file (required)
+ * - `--json` - Output JSON instead of TypeScript
+ * - `--indent <str>` - Indentation for TypeScript output (default: "\t")
+ * - `--name <str>` - Config variable name for TypeScript output (default: "config")
+ * - `--help` - Show help message
  */
 
 import { parseArgs } from "@std/cli/parse-args";
