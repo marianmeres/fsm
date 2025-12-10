@@ -1,6 +1,6 @@
 {
   "name": "@marianmeres/fsm",
-  "version": "2.12.0",
+  "version": "2.13.0",
   "exports": {
     ".": "./src/mod.ts",
     "./mermaid-to-typescript": "./scripts/mermaid-to-typescript.ts"
