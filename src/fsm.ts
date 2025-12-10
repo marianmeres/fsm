@@ -544,11 +544,22 @@ export class FSM<
 	}
 
 	/**
-	 * Check whether a transition is valid from the current state.
-	 * Returns true if the transition can be executed, false otherwise.
-	 * Respects guards and transition definitions.
-	 *
+	 * Checks whether a transition is valid from the current state without executing it.
 	 * This is a pure query operation that does not modify FSM state.
+	 * Guards are evaluated against a cloned context to ensure they cannot mutate state.
+	 *
+	 * @param event - The transition event name to check
+	 * @param payload - Optional payload for guard evaluation
+	 * @returns `true` if the transition can be executed, `false` otherwise
+	 *
+	 * @example
+	 * ```typescript
+	 * if (fsm.canTransition("submit")) {
+	 *   fsm.transition("submit");
+	 * } else {
+	 *   console.log("Submit not available");
+	 * }
+	 * ```
 	 */
 	canTransition(event: TTransition, payload?: FSMPayload): boolean {
 		this.#debugLog(
@@ -592,10 +603,21 @@ export class FSM<
 	 *
 	 * Limitations:
 	 * - Cannot recreate actual guard/action functions (sets them to null as placeholders)
-	 * - Cannot recreate onEnter/onExit hooks (not represented in mermaid)
+	 * - Cannot recreate onEnter/onExit hooks (not represented in Mermaid)
 	 * - Cannot infer context structure
 	 *
-	 * Primarily useful for documentation/visualization roundtripping.
+	 * @param mermaidDiagram - A Mermaid stateDiagram-v2 string
+	 * @returns A new FSM instance parsed from the diagram
+	 *
+	 * @example
+	 * ```typescript
+	 * const fsm = FSM.fromMermaid<"IDLE" | "ACTIVE", "start" | "stop">(`
+	 *   stateDiagram-v2
+	 *   [*] --> IDLE
+	 *   IDLE --> ACTIVE: start
+	 *   ACTIVE --> IDLE: stop
+	 * `);
+	 * ```
 	 */
 	static fromMermaid<
 		TState extends string = string,
