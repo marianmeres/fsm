@@ -285,6 +285,56 @@ const fsm = new FSM({
 });
 ```
 
+### Self-Loop Transitions and Infinite Loops
+
+**Self-loop transitions** (where the target state equals the current state) are valid FSM semantics. When a self-loop occurs, the full lifecycle executes: `onExit` → `action` → `onEnter` → notify subscribers. This is useful for retry logic, refresh patterns, or re-initialization.
+
+However, be cautious when calling `transition()` from within a subscriber callback. Since notifications are synchronous, transitioning to the same state (or any state that leads back) can cause an infinite loop:
+
+```typescript
+// ⚠️ DANGER: This will cause an infinite loop!
+fsm.subscribe(({ current }) => {
+    if (current === "LOADING") {
+        fsm.transition("refresh"); // If "refresh" targets "LOADING" again...
+    }
+});
+```
+
+**Prevention patterns:**
+
+1. **Check for actual state changes:**
+```typescript
+fsm.subscribe(({ current, previous }) => {
+    // Only react to actual state changes, not self-loops
+    if (current !== previous) {
+        fsm.transition("someEvent");
+    }
+});
+```
+
+2. **Use guards to prevent repeated transitions:**
+```typescript
+{
+    on: {
+        refresh: {
+            target: "LOADING",
+            guard: (ctx) => !ctx.isRefreshing,
+            action: (ctx) => ctx.isRefreshing = true
+        }
+    }
+}
+```
+
+3. **Use internal transitions** when you only need to run an action without re-entering the state:
+```typescript
+{
+    on: {
+        // No target = internal transition, no onExit/onEnter, but still notifies
+        updateData: { action: (ctx) => ctx.data = fetchedData }
+    }
+}
+```
+
 ## Wildcard Transitions
 
 Use the wildcard `"*"` to define a fallback transition that catches any event not explicitly defined. Specific transitions always take priority over wildcards.

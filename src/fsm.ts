@@ -200,6 +200,15 @@ export function createFsm<
  * It manages state transitions and enforces rules via guards, transition actions,
  * and lifecycle hooks (onEnter/onExit), but contains no business logic by design.
  *
+ * **Transition types:**
+ * - **External transitions** (with target): Execute full lifecycle (onExit → action → onEnter → notify)
+ * - **Internal transitions** (no target): Execute only action → notify, without onExit/onEnter
+ * - **Self-loop transitions** (target === current): Execute full lifecycle; useful for retry/refresh patterns
+ *
+ * **Note on self-loops:** When transitioning to the same state, onExit and onEnter still fire.
+ * Be cautious when calling `transition()` from within subscribers to avoid infinite loops.
+ * Use `if (current !== previous)` checks when needed. See `subscribe()` docs for details.
+ *
  * @template TState - Union type of all possible state names
  * @template TTransition - Union type of all possible transition event names
  * @template TContext - Type of the FSM context object (should contain only data, no functions)
@@ -317,6 +326,20 @@ export class FSM<
 	 * Subscribes to FSM state changes.
 	 * The callback is invoked immediately with the current state and on every subsequent state change.
 	 *
+	 * **Important:** Subscribers are notified synchronously. If you call `transition()` from within
+	 * a subscriber callback, be careful to avoid infinite loops. Self-loop transitions (where the
+	 * target state equals the current state) are valid FSM semantics and will trigger notifications.
+	 *
+	 * To prevent infinite loops when transitioning from within a subscriber:
+	 * ```typescript
+	 * fsm.subscribe(({ current, previous }) => {
+	 *   // Only react to actual state changes, not self-loops
+	 *   if (current !== previous) {
+	 *     fsm.transition("someEvent");
+	 *   }
+	 * });
+	 * ```
+	 *
 	 * @param cb - Callback function receiving current state, previous state, and context
 	 * @returns Unsubscriber function to stop receiving updates
 	 *
@@ -348,6 +371,12 @@ export class FSM<
 	 * 5. Subscribers notified
 	 *
 	 * For internal transitions (no target defined), only the action runs and subscribers are notified.
+	 *
+	 * **Self-loop transitions:** When the target state equals the current state, the full transition
+	 * lifecycle still executes (onExit, action, onEnter, notify). This is intentional — self-loops
+	 * are valid FSM semantics for scenarios like retry logic, refresh, or re-initialization.
+	 * However, be cautious when calling `transition()` from within a subscriber callback, as
+	 * self-loops can cause infinite loops. See `subscribe()` documentation for prevention patterns.
 	 *
 	 * @param event - The transition event name
 	 * @param payload - Optional data passed to guards, actions, and lifecycle hooks
