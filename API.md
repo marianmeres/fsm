@@ -25,14 +25,14 @@ import { FSM } from "@marianmeres/fsm";
 ### Constructor
 
 ```typescript
-new FSM<TState, TTransition, TContext>(config: FSMConfig<TState, TTransition, TContext>)
+new FSM<TState, TEvent, TContext>(config: FSMConfig<TState, TEvent, TContext>)
 ```
 
 Creates a new FSM instance.
 
 **Type Parameters:**
 - `TState extends string` - Union type of all possible state names
-- `TTransition extends string` - Union type of all possible transition event names
+- `TEvent extends string` - Union type of all possible transition event names
 - `TContext` - Type of the FSM context object (should contain only data, no functions)
 
 **Parameters:**
@@ -78,7 +78,7 @@ A custom data object accessible throughout the FSM's lifetime. Context should co
 #### `config`
 
 ```typescript
-readonly config: FSMConfig<TState, TTransition, TContext>
+readonly config: FSMConfig<TState, TEvent, TContext>
 ```
 
 The original configuration object passed to the constructor.
@@ -134,7 +134,7 @@ unsub();
 
 ```typescript
 transition(
-  event: TTransition,
+  event: TEvent,
   payload?: FSMPayload,
   assert?: boolean
 ): TState | null
@@ -172,7 +172,7 @@ fsm.transition("invalid", null, false);     // Non-throwing mode
 #### `canTransition()`
 
 ```typescript
-canTransition(event: TTransition, payload?: FSMPayload): boolean
+canTransition(event: TEvent, payload?: FSMPayload): boolean
 ```
 
 Checks whether a transition is valid from the current state without executing it. This is a pure query operation that does not modify FSM state. Guards are evaluated against a cloned context to ensure they cannot mutate state.
@@ -219,7 +219,7 @@ if (fsm.is("LOADING")) {
 #### `reset()`
 
 ```typescript
-reset(): FSM<TState, TTransition, TContext>
+reset(): FSM<TState, TEvent, TContext>
 ```
 
 Resets the FSM to its initial state and re-initializes the context. If context was defined as a factory function, a fresh context is created. Subscribers are notified after reset.
@@ -264,9 +264,9 @@ console.log(fsm.toMermaid());
 ### `createFsm()`
 
 ```typescript
-function createFsm<TState, TTransition, TContext>(
-  config: FSMConfig<TState, TTransition, TContext>
-): FSM<TState, TTransition, TContext>
+function createFsm<TState, TEvent, TContext>(
+  config: FSMConfig<TState, TEvent, TContext>
+): FSM<TState, TEvent, TContext>
 ```
 
 Factory function to create an FSM instance. Equivalent to calling `new FSM(config)`.
@@ -289,9 +289,9 @@ const fsm = createFsm<"ON" | "OFF", "toggle">({
 ### `FSM.fromMermaid()`
 
 ```typescript
-static fromMermaid<TState, TTransition, TContext>(
+static fromMermaid<TState, TEvent, TContext>(
   mermaidDiagram: string
-): FSM<TState, TTransition, TContext>
+): FSM<TState, TEvent, TContext>
 ```
 
 Creates an FSM instance from a Mermaid stateDiagram-v2 notation. This is a static factory method that wraps the standalone `fromMermaid` parser.
@@ -318,9 +318,9 @@ const fsm = FSM.fromMermaid<"IDLE" | "ACTIVE", "start" | "stop">(`
 ### `fromMermaid()`
 
 ```typescript
-function fromMermaid<TState, TTransition, TContext>(
+function fromMermaid<TState, TEvent, TContext>(
   mermaidDiagram: string
-): FSMConfig<TState, TTransition, TContext>
+): FSMConfig<TState, TEvent, TContext>
 ```
 
 Parses a Mermaid stateDiagram-v2 notation into an FSM configuration object. This function enables round-tripping between FSM configurations and Mermaid diagrams.
@@ -429,17 +429,17 @@ const tsCode = toTypeScript(`
 ### `composeFsmConfig()`
 
 ```typescript
-function composeFsmConfig<TState, TTransition, TContext>(
-  fragments: (FSMConfigFragment<TState, TTransition, TContext> | false | null | undefined)[],
+function composeFsmConfig<TState, TEvent, TContext>(
+  fragments: (FSMConfigFragment<TState, TEvent, TContext> | false | null | undefined)[],
   options?: ComposeFsmConfigOptions
-): FSMConfig<TState, TTransition, TContext>
+): FSMConfig<TState, TEvent, TContext>
 ```
 
 Composes multiple FSM configuration fragments into a single configuration. This enables building complex FSMs from reusable building blocks.
 
 **Type Parameters:**
 - `TState extends string` - Union type of all possible state names
-- `TTransition extends string` - Union type of all possible transition event names
+- `TEvent extends string` - Union type of all possible transition event names
 - `TContext` - Type of the FSM context object
 
 **Parameters:**
@@ -480,15 +480,15 @@ const fsm = createFsm(config);
 
 ---
 
-### `FSMConfigFragment<TState, TTransition, TContext>`
+### `FSMConfigFragment<TState, TEvent, TContext>`
 
 A partial FSM configuration fragment for composition. All fields are optional to allow building configs piece by piece.
 
 ```typescript
-type FSMConfigFragment<TState, TTransition, TContext> = {
+type FSMConfigFragment<TState, TEvent, TContext> = {
   initial?: TState;
   states?: {
-    [K in TState]?: Partial<FSMStatesConfigValue<TState, TTransition, TContext>>;
+    [K in TState]?: Partial<FSMStatesConfigValue<TState, TEvent, TContext>>;
   };
   context?: TContext | (() => TContext);
   debug?: boolean;
@@ -555,14 +555,14 @@ const config = composeFsmConfig(
 
 ## Types
 
-### `FSMConfig<TState, TTransition, TContext>`
+### `FSMConfig<TState, TEvent, TContext>`
 
 Constructor configuration object.
 
 ```typescript
-type FSMConfig<TState, TTransition, TContext> = {
+type FSMConfig<TState, TEvent, TContext> = {
   initial: TState;
-  states: FSMStatesConfigMap<TState, TTransition, TContext>;
+  states: FSMStatesConfigMap<TState, TEvent, TContext>;
   context?: TContext | (() => TContext);
   debug?: boolean;
   logger?: Logger;
@@ -573,25 +573,25 @@ type FSMConfig<TState, TTransition, TContext> = {
 
 ---
 
-### `FSMStatesConfigMap<TState, TTransition, TContext>`
+### `FSMStatesConfigMap<TState, TEvent, TContext>`
 
 Maps state names to their configuration objects.
 
 ```typescript
-type FSMStatesConfigMap<TState, TTransition, TContext> =
-  Record<TState, FSMStatesConfigValue<TState, TTransition, TContext>>;
+type FSMStatesConfigMap<TState, TEvent, TContext> =
+  Record<TState, FSMStatesConfigValue<TState, TEvent, TContext>>;
 ```
 
 ---
 
-### `FSMStatesConfigValue<TState, TTransition, TContext>`
+### `FSMStatesConfigValue<TState, TEvent, TContext>`
 
 Configuration object for a single state.
 
 ```typescript
-type FSMStatesConfigValue<TState, TTransition, TContext> = {
+type FSMStatesConfigValue<TState, TEvent, TContext> = {
   onEnter?: (context: TContext, payload?: FSMPayload) => void;
-  on: Partial<Record<TTransition | "*", TransitionDef<TState, TContext>>>;
+  on: Partial<Record<TEvent | "*", TransitionDef<TState, TContext>>>;
   onExit?: (context: TContext, payload?: FSMPayload) => void;
 };
 ```

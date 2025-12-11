@@ -46,16 +46,16 @@ export type FSMPayload = unknown;
  * Defines the available transitions from this state and optional lifecycle hooks.
  *
  * @template TState - Union type of all possible state names
- * @template TTransition - Union type of all possible transition event names
+ * @template TEvent - Union type of all possible transition event names
  * @template TContext - Type of the FSM context object
  */
 export type FSMStatesConfigValue<
 	TState extends string,
-	TTransition extends string,
+	TEvent extends string,
 	TContext
 > = {
 	onEnter?: (context: TContext, payload?: FSMPayload) => void;
-	on: Partial<Record<TTransition | "*", TransitionDef<TState, TContext>>>;
+	on: Partial<Record<TEvent | "*", TransitionDef<TState, TContext>>>;
 	onExit?: (context: TContext, payload?: FSMPayload) => void;
 };
 
@@ -63,14 +63,14 @@ export type FSMStatesConfigValue<
  * Maps state names to their configuration objects.
  *
  * @template TState - Union type of all possible state names
- * @template TTransition - Union type of all possible transition event names
+ * @template TEvent - Union type of all possible transition event names
  * @template TContext - Type of the FSM context object
  */
 export type FSMStatesConfigMap<
 	TState extends string,
-	TTransition extends string,
+	TEvent extends string,
 	TContext
-> = Record<TState, FSMStatesConfigValue<TState, TTransition, TContext>>;
+> = Record<TState, FSMStatesConfigValue<TState, TEvent, TContext>>;
 
 /**
  * Constructor configuration
@@ -86,11 +86,11 @@ export type FSMStatesConfigMap<
  */
 export type FSMConfig<
 	TState extends string,
-	TTransition extends string,
+	TEvent extends string,
 	TContext
 > = {
 	initial: TState;
-	states: FSMStatesConfigMap<TState, TTransition, TContext>;
+	states: FSMStatesConfigMap<TState, TEvent, TContext>;
 	// accepts a value OR a factory function for true resets
 	context?: TContext | (() => TContext);
 	/** Enable debug logging (default: false) */
@@ -167,7 +167,7 @@ export type PublishedState<TState> = {
  * Equivalent to calling `new FSM(config)`.
  *
  * @template TState - Union type of all possible state names
- * @template TTransition - Union type of all possible transition event names
+ * @template TEvent - Union type of all possible transition event names
  * @template TContext - Type of the FSM context object
  * @param config - The FSM configuration object
  * @returns A new FSM instance
@@ -185,12 +185,12 @@ export type PublishedState<TState> = {
  */
 export function createFsm<
 	TState extends string,
-	TTransition extends string,
+	TEvent extends string,
 	TContext = unknown
 >(
-	config: FSMConfig<TState, TTransition, TContext>
-): FSM<TState, TTransition, TContext> {
-	return new FSM<TState, TTransition, TContext>(config);
+	config: FSMConfig<TState, TEvent, TContext>
+): FSM<TState, TEvent, TContext> {
+	return new FSM<TState, TEvent, TContext>(config);
 }
 
 /**
@@ -210,7 +210,7 @@ export function createFsm<
  * Use `if (current !== previous)` checks when needed. See `subscribe()` docs for details.
  *
  * @template TState - Union type of all possible state names
- * @template TTransition - Union type of all possible transition event names
+ * @template TEvent - Union type of all possible transition event names
  * @template TContext - Type of the FSM context object (should contain only data, no functions)
  *
  * @example
@@ -230,7 +230,7 @@ export function createFsm<
  */
 export class FSM<
 	TState extends string,
-	TTransition extends string,
+	TEvent extends string,
 	TContext = unknown
 > {
 	/** FSM's previous state */
@@ -260,7 +260,7 @@ export class FSM<
 	 * @param config - The FSM configuration containing initial state, states definition, and optional context
 	 */
 	constructor(
-		public readonly config: FSMConfig<TState, TTransition, TContext>
+		public readonly config: FSMConfig<TState, TEvent, TContext>
 	) {
 		this.#debug = config.debug ?? false;
 		this.#logger = config.logger ?? defaultLogger;
@@ -392,7 +392,7 @@ export class FSM<
 	 * ```
 	 */
 	transition(
-		event: TTransition,
+		event: TEvent,
 		payload?: FSMPayload,
 		assert = true
 	): TState | null {
@@ -409,7 +409,7 @@ export class FSM<
 
 		if (!transitionDef) {
 			// Try wildcard transition as fallback
-			transitionDef = currentStateConfig.on["*" as TTransition];
+			transitionDef = currentStateConfig.on["*" as TEvent];
 			usedWildcard = !!transitionDef;
 
 			if (!transitionDef) {
@@ -546,7 +546,7 @@ export class FSM<
 	 * fsm.reset().is("IDLE"); // true
 	 * ```
 	 */
-	reset(): FSM<TState, TTransition, TContext> {
+	reset(): FSM<TState, TEvent, TContext> {
 		this.#debugLog(`reset() called, returning to "${this.config.initial}"`);
 		this.#state = this.config.initial;
 		this.#previous = null;
@@ -590,7 +590,7 @@ export class FSM<
 	 * }
 	 * ```
 	 */
-	canTransition(event: TTransition, payload?: FSMPayload): boolean {
+	canTransition(event: TEvent, payload?: FSMPayload): boolean {
 		this.#debugLog(
 			`canTransition("${event}") called from state "${this.#state}"`
 		);
@@ -608,7 +608,7 @@ export class FSM<
 
 		if (!transitionDef) {
 			// Try wildcard transition as fallback
-			transitionDef = currentStateConfig.on["*" as TTransition];
+			transitionDef = currentStateConfig.on["*" as TEvent];
 
 			if (!transitionDef) {
 				this.#debugLog(
@@ -650,13 +650,13 @@ export class FSM<
 	 */
 	static fromMermaid<
 		TState extends string = string,
-		TTransition extends string = string,
+		TEvent extends string = string,
 		TContext = unknown
-	>(mermaidDiagram: string): FSM<TState, TTransition, TContext> {
-		const config = fromMermaidParser<TState, TTransition, TContext>(
+	>(mermaidDiagram: string): FSM<TState, TEvent, TContext> {
+		const config = fromMermaidParser<TState, TEvent, TContext>(
 			mermaidDiagram
 		);
-		return new FSM<TState, TTransition, TContext>(config);
+		return new FSM<TState, TEvent, TContext>(config);
 	}
 
 	/**

@@ -191,11 +191,11 @@ Note: Transitions inside composite state blocks ARE parsed as regular transition
 ## Type Parameters Convention
 
 ```typescript
-FSM<TState, TTransition, TContext>
+FSM<TState, TEvent, TContext>
 ```
 
 - `TState extends string`: Union of state names (e.g., `"IDLE" | "LOADING"`)
-- `TTransition extends string`: Union of event names (e.g., `"load" | "done"`)
+- `TEvent extends string`: Union of event names (e.g., `"load" | "done"`)
 - `TContext = unknown`: Context data type (default: unknown)
 
 ## Error Handling

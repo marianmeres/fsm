@@ -11,12 +11,12 @@ import type {
  */
 export type FSMConfigFragment<
 	TState extends string,
-	TTransition extends string,
+	TEvent extends string,
 	TContext
 > = {
 	initial?: TState;
 	states?: {
-		[K in TState]?: Partial<FSMStatesConfigValue<TState, TTransition, TContext>>;
+		[K in TState]?: Partial<FSMStatesConfigValue<TState, TEvent, TContext>>;
 	};
 	context?: TContext | (() => TContext);
 	debug?: boolean;
@@ -93,17 +93,17 @@ type HookFn<TContext> = (context: TContext, payload?: FSMPayload) => void;
  */
 export function composeFsmConfig<
 	TState extends string,
-	TTransition extends string,
+	TEvent extends string,
 	TContext
 >(
-	fragments: (FSMConfigFragment<TState, TTransition, TContext> | false | null | undefined)[],
+	fragments: (FSMConfigFragment<TState, TEvent, TContext> | false | null | undefined)[],
 	options: ComposeFsmConfigOptions = {}
-): FSMConfig<TState, TTransition, TContext> {
+): FSMConfig<TState, TEvent, TContext> {
 	const { hooks = "replace", context: contextMode = "merge", onConflict = "last-wins" } = options;
 
 	// Filter out falsy values (allows conditional fragments)
 	const validFragments = fragments.filter(
-		(f): f is FSMConfigFragment<TState, TTransition, TContext> => Boolean(f)
+		(f): f is FSMConfigFragment<TState, TEvent, TContext> => Boolean(f)
 	);
 
 	if (validFragments.length === 0) {
@@ -118,7 +118,7 @@ export function composeFsmConfig<
 	const contextSources: (TContext | (() => TContext))[] = [];
 
 	// Merged states map
-	const mergedStates: Record<string, FSMStatesConfigValue<TState, TTransition, TContext>> = {};
+	const mergedStates: Record<string, FSMStatesConfigValue<TState, TEvent, TContext>> = {};
 
 	// Track hooks for composition mode
 	const hookCollectors: Record<
@@ -151,7 +151,7 @@ export function composeFsmConfig<
 		if (fragment.states) {
 			for (const [stateName, stateConfig] of Object.entries(fragment.states)) {
 				const state = stateName as TState;
-				const config = stateConfig as FSMStatesConfigValue<TState, TTransition, TContext>;
+				const config = stateConfig as FSMStatesConfigValue<TState, TEvent, TContext>;
 
 				if (!mergedStates[state]) {
 					mergedStates[state] = { on: {} };
@@ -204,9 +204,9 @@ export function composeFsmConfig<
 		throw new Error("composeFsmConfig: no 'initial' state defined in any fragment");
 	}
 
-	const result: FSMConfig<TState, TTransition, TContext> = {
+	const result: FSMConfig<TState, TEvent, TContext> = {
 		initial,
-		states: mergedStates as Record<TState, FSMStatesConfigValue<TState, TTransition, TContext>>,
+		states: mergedStates as Record<TState, FSMStatesConfigValue<TState, TEvent, TContext>>,
 	};
 
 	// Handle context based on mode

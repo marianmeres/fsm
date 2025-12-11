@@ -247,7 +247,7 @@ function createPlaceholderAction<TContext>(
  * - Type information must be provided via generics
  *
  * @template TState - Union type of all possible state names
- * @template TTransition - Union type of all possible transition event names
+ * @template TEvent - Union type of all possible transition event names
  * @template TContext - Type of the FSM context object
  * @param mermaidDiagram - A Mermaid stateDiagram-v2 string
  * @returns FSM configuration object ready to pass to the FSM constructor
@@ -266,9 +266,9 @@ function createPlaceholderAction<TContext>(
  */
 export function fromMermaid<
 	TState extends string = string,
-	TTransition extends string = string,
+	TEvent extends string = string,
 	TContext = unknown
->(mermaidDiagram: string): FSMConfig<TState, TTransition, TContext> {
+>(mermaidDiagram: string): FSMConfig<TState, TEvent, TContext> {
 	const lines = mermaidDiagram.trim().split("\n");
 
 	// Find the stateDiagram-v2 header, skipping any YAML frontmatter
@@ -284,7 +284,7 @@ export function fromMermaid<
 	let initial: TState | null = null;
 	const statesMap = new Map<
 		TState,
-		Map<TTransition, Array<TransitionObj<TState, TContext>>>
+		Map<TEvent, Array<TransitionObj<TState, TContext>>>
 	>();
 
 	for (let i = startIndex + 1; i < lines.length; i++) {
@@ -330,7 +330,7 @@ export function fromMermaid<
 
 			const from = fromState as TState;
 			const to = toState as TState;
-			const event = parsed.event as TTransition;
+			const event = parsed.event as TEvent;
 
 			// Initialize state if not exists
 			if (!statesMap.has(from)) {
@@ -404,7 +404,7 @@ export function fromMermaid<
 	return {
 		initial,
 		states,
-	} as FSMConfig<TState, TTransition, TContext>;
+	} as FSMConfig<TState, TEvent, TContext>;
 }
 
 /**

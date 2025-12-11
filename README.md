@@ -27,10 +27,10 @@ import { FSM } from "@marianmeres/fsm";
 
 ```typescript
 type STATES = "IDLE" | "FETCHING" | "RETRYING" | "SUCCESS" | "FAILED";
-type TRANSITIONS = "fetch" | "resolve" | "reject" | "retry" | "reset";
+type EVENTS = "fetch" | "resolve" | "reject" | "retry" | "reset";
 type CONTEXT = { attempts: number; maxRetries: number; data: unknown; error: unknown; };
 
-const fsm = new FSM<STATES, TRANSITIONS, CONTEXT>({
+const fsm = new FSM<STATES, EVENTS, CONTEXT>({
     initial: "IDLE",
     // Use a factory function for context to ensure a fresh object on reset()
     context: () => ({ attempts: 0, maxRetries: 2, data: null, error: null }),
@@ -96,6 +96,34 @@ assertThrows(() => fsm.transition("retry"));
 console.log(fsm.state, fsm.context);
 
 ```
+
+## Events vs Transitions
+
+Understanding the distinction between **events** and **transitions** helps clarify FSM concepts:
+
+| **Event** | **Transition** |
+|-----------|----------------|
+| The trigger/signal — *what happened* | The response/rule — *what to do about it* |
+| A name like `"click"`, `"submit"`, `"timeout"` | The full definition: target state + guard + action |
+| External input to the FSM | Internal FSM configuration |
+| **Sent** to the machine | **Defined** in the machine |
+
+In the configuration, the `on` property maps **events** to **transitions**:
+
+```typescript
+states: {
+    IDLE: {
+        on: {
+            "load": "LOADING"  // ← "load" is the EVENT
+                               // ← "LOADING" (or full object) is the TRANSITION
+        }
+    }
+}
+```
+
+**Mental model:** Think of a vending machine — you press button "A3" (the **event**), and the machine's internal rule says "if in READY state and button A3 pressed, dispense item and go to DISPENSING state" (the **transition**).
+
+More simply: **Event** = "What did you say?" / **Transition** = "What I'll do about it."
 
 ## Mermaid Diagram Support
 
