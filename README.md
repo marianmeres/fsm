@@ -557,16 +557,17 @@ Understanding how fragments merge is important:
 |----------|----------|
 | `initial` | Last fragment defining it wins |
 | `context` | Shallow-merged by default (configurable) |
-| `states.X.on` | Transitions are shallow-merged (later overrides earlier) |
+| `states.X.on` | Transitions are replaced by default (configurable) |
 | `states.X.onEnter/onExit` | Configurable via `hooks` option |
 
 ### Options
 
 ```typescript
 composeFsmConfig([...fragments], {
-    hooks: "replace" | "compose",     // default: "replace"
-    context: "merge" | "replace",     // default: "merge"
-    onConflict: "last-wins" | "error" // default: "last-wins"
+    hooks: "replace" | "compose",        // default: "replace"
+    context: "merge" | "replace",        // default: "merge"
+    onConflict: "last-wins" | "error",   // default: "last-wins"
+    transitions: "replace" | "prepend" | "append"  // default: "replace"
 });
 ```
 
@@ -575,6 +576,52 @@ composeFsmConfig([...fragments], {
 - **`context: "merge"`** (default): Shallow-merge context from all fragments
 - **`context: "replace"`**: Later fragment's context completely overrides earlier
 - **`onConflict: "error"`**: Throws if multiple fragments define different `initial` values
+- **`transitions: "replace"`** (default): Later fragment's transitions override earlier ones
+- **`transitions: "prepend"`**: Later fragment's transitions are prepended (run first)
+- **`transitions: "append"`**: Later fragment's transitions are appended (run last)
+
+### Transition Merging with Interceptor Pattern
+
+The `transitions` option enables powerful composition patterns like authentication gates or confirmation dialogs without tight coupling between fragments:
+
+```typescript
+// Core application flow
+const coreFetch: FSMConfigFragment<States, Events, Context> = {
+    initial: "IDLE",
+    states: {
+        IDLE: { on: { submit: "PROCESSING" } },
+        PROCESSING: { on: { resolve: "SUCCESS", reject: "ERROR" } },
+        SUCCESS: { on: { reset: "IDLE" } },
+        ERROR: { on: { reset: "IDLE" } },
+    },
+};
+
+// Auth gate - intercepts transitions when not authenticated
+const authGate: FSMConfigFragment<States, Events, Context> = {
+    states: {
+        IDLE: {
+            on: {
+                submit: {
+                    target: "LOGIN_REQUIRED",
+                    guard: (ctx) => !ctx.authenticated,
+                },
+            },
+        },
+        LOGIN_REQUIRED: { on: { login: "IDLE", cancel: "IDLE" } },
+    },
+};
+
+// With "prepend", auth check runs BEFORE the base submit handler
+const config = composeFsmConfig([coreFetch, authGate], {
+    transitions: "prepend",
+});
+
+// Result: When "submit" is triggered from IDLE:
+// 1. Auth guard checked first - if !authenticated, go to LOGIN_REQUIRED
+// 2. If authenticated, fall through to base handler → PROCESSING
+```
+
+This pattern allows fragments to remain independent - the auth fragment doesn't need to know the implementation details of the base fragment.
 
 ### Conditional Fragments
 

@@ -433,3 +433,153 @@ Deno.test("transition override (later wins)", () => {
 	fsm.transition("go");
 	assertEquals(fsm.state, "C"); // f2's transition wins
 });
+
+Deno.test("transitions prepend mode - basic", () => {
+	type STATES = "A" | "B" | "C";
+	type TRANSITIONS = "go";
+	type CTX = { authenticated: boolean };
+
+	const base: FSMConfigFragment<STATES, TRANSITIONS, CTX> = {
+		initial: "A",
+		context: { authenticated: true },
+		states: {
+			A: { on: { go: { target: "B", guard: () => true } } },
+			B: { on: {} },
+		},
+	};
+
+	const auth: FSMConfigFragment<STATES, TRANSITIONS, CTX> = {
+		states: {
+			A: { on: { go: { target: "C", guard: (ctx) => !ctx.authenticated } } },
+			C: { on: {} },
+		},
+	};
+
+	const config = composeFsmConfig([base, auth], { transitions: "prepend" });
+
+	// Auth's handler should be first (prepended)
+	const handlers = config.states.A.on.go;
+	assertEquals(Array.isArray(handlers), true);
+	assertEquals((handlers as unknown[]).length, 2);
+});
+
+Deno.test("transitions prepend mode - auth gate pattern", () => {
+	type STATES = "IDLE" | "PROCESSING" | "LOGIN_REQUIRED";
+	type TRANSITIONS = "submit";
+	type CTX = { authenticated: boolean };
+
+	const base: FSMConfigFragment<STATES, TRANSITIONS, CTX> = {
+		initial: "IDLE",
+		context: { authenticated: false },
+		states: {
+			IDLE: { on: { submit: "PROCESSING" } },
+			PROCESSING: { on: {} },
+		},
+	};
+
+	const authGate: FSMConfigFragment<STATES, TRANSITIONS, CTX> = {
+		states: {
+			IDLE: {
+				on: {
+					submit: {
+						target: "LOGIN_REQUIRED",
+						guard: (ctx) => !ctx.authenticated,
+					},
+				},
+			},
+			LOGIN_REQUIRED: { on: {} },
+		},
+	};
+
+	const config = composeFsmConfig([base, authGate], { transitions: "prepend" });
+	const fsm = createFsm(config);
+
+	// Not authenticated - should go to LOGIN_REQUIRED (auth guard runs first)
+	fsm.transition("submit");
+	assertEquals(fsm.state, "LOGIN_REQUIRED");
+});
+
+Deno.test("transitions append mode", () => {
+	type STATES = "A" | "B" | "C";
+	type TRANSITIONS = "go";
+	type CTX = { flag: boolean };
+
+	const base: FSMConfigFragment<STATES, TRANSITIONS, CTX> = {
+		initial: "A",
+		context: { flag: true },
+		states: {
+			A: { on: { go: { target: "B", guard: (ctx) => ctx.flag } } },
+			B: { on: {} },
+		},
+	};
+
+	const fallback: FSMConfigFragment<STATES, TRANSITIONS, CTX> = {
+		states: {
+			A: { on: { go: "C" } }, // fallback with no guard
+			C: { on: {} },
+		},
+	};
+
+	const config = composeFsmConfig([base, fallback], { transitions: "append" });
+	const fsm = createFsm(config);
+
+	// Base guard passes, should go to B
+	fsm.transition("go");
+	assertEquals(fsm.state, "B");
+
+	// Reset and change flag
+	fsm.reset();
+	fsm.context.flag = false;
+
+	// Base guard fails, fallback (appended) should run
+	fsm.transition("go");
+	assertEquals(fsm.state, "C");
+});
+
+Deno.test("transitions replace mode (default) unchanged", () => {
+	type STATES = "A" | "B" | "C";
+	type TRANSITIONS = "go";
+
+	const f1: FSMConfigFragment<STATES, TRANSITIONS, unknown> = {
+		initial: "A",
+		states: { A: { on: { go: "B" } }, B: { on: {} } },
+	};
+
+	const f2: FSMConfigFragment<STATES, TRANSITIONS, unknown> = {
+		states: { A: { on: { go: "C" } }, C: { on: {} } },
+	};
+
+	// Default behavior (replace)
+	const config = composeFsmConfig([f1, f2]);
+	const fsm = createFsm(config);
+
+	fsm.transition("go");
+	assertEquals(fsm.state, "C"); // f2 replaced f1
+});
+
+Deno.test("transitions prepend with string and object mix", () => {
+	type STATES = "A" | "B" | "C";
+	type TRANSITIONS = "go";
+
+	const f1: FSMConfigFragment<STATES, TRANSITIONS, unknown> = {
+		initial: "A",
+		states: {
+			A: { on: { go: "B" } }, // string form
+			B: { on: {} },
+		},
+	};
+
+	const f2: FSMConfigFragment<STATES, TRANSITIONS, unknown> = {
+		states: {
+			A: { on: { go: { target: "C", guard: () => false } } }, // object form
+			C: { on: {} },
+		},
+	};
+
+	const config = composeFsmConfig([f1, f2], { transitions: "prepend" });
+	const fsm = createFsm(config);
+
+	// f2's guard fails, f1's handler (now second) should execute
+	fsm.transition("go");
+	assertEquals(fsm.state, "B");
+});

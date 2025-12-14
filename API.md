@@ -511,6 +511,7 @@ type ComposeFsmConfigOptions = {
   hooks?: "replace" | "compose";
   context?: "merge" | "replace";
   onConflict?: "last-wins" | "error";
+  transitions?: "replace" | "prepend" | "append";
 };
 ```
 
@@ -524,6 +525,27 @@ type ComposeFsmConfigOptions = {
 | | `"replace"` | | Later fragments completely override earlier context |
 | `onConflict` | `"last-wins"` | `"last-wins"` | Later fragments override `initial` |
 | | `"error"` | | Throw if multiple fragments define different `initial` values |
+| `transitions` | `"replace"` | `"replace"` | Later fragments override earlier transition handlers |
+| | `"prepend"` | | Later fragment transitions prepended (evaluated first) |
+| | `"append"` | | Later fragment transitions appended (evaluated last) |
+
+**Transition Merging:**
+
+When using `transitions: "prepend"` or `"append"`, transitions from multiple fragments are combined into arrays. This enables interceptor patterns where later fragments can add guards that run before (prepend) or after (append) earlier handlers:
+
+```typescript
+const base = { states: { IDLE: { on: { submit: "PROCESSING" } } } };
+const auth = { states: { IDLE: { on: { submit: { target: "LOGIN", guard: (ctx) => !ctx.auth } } } } };
+
+// With "prepend", auth guard runs first
+const config = composeFsmConfig([base, auth], { transitions: "prepend" });
+// Result: IDLE.on.submit = [
+//   { target: "LOGIN", guard: ... },  // auth (prepended, runs first)
+//   { target: "PROCESSING" }          // base (fallback)
+// ]
+```
+
+In prepend/append modes, all transition forms (string, object, array) are normalized to arrays before concatenation.
 
 **Context Merging:**
 

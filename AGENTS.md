@@ -327,5 +327,36 @@ const config = composeFsmConfig([
 - Falsy values in array are filtered out (enables conditional fragments)
 - `initial`: Last fragment wins (or error with `onConflict: "error"`)
 - `context`: Shallow-merged by default (or replaced with `context: "replace"`)
-- `states.X.on`: Shallow-merged (later transitions override earlier)
+- `states.X.on`: Replaced by default, or merged with `transitions: "prepend"` / `"append"`
 - `onEnter`/`onExit`: Replaced by default, or chained with `hooks: "compose"`
+
+**Transition Merge Modes:**
+- `"replace"` (default): Later fragments override earlier transition handlers
+- `"prepend"`: Later fragment transitions are prepended (evaluated first) - useful for interceptors
+- `"append"`: Later fragment transitions are appended (evaluated last) - useful for fallbacks
+
+### Auth Gate Pattern (Interceptor)
+
+```typescript
+const base = {
+  initial: "IDLE",
+  states: {
+    IDLE: { on: { submit: "PROCESSING" } },
+    PROCESSING: { on: {} },
+  },
+};
+
+const authGate = {
+  states: {
+    IDLE: {
+      on: {
+        submit: { target: "LOGIN", guard: (ctx) => !ctx.authenticated },
+      },
+    },
+    LOGIN: { on: { login: "IDLE" } },
+  },
+};
+
+// Auth check runs first, falls through to base if authenticated
+const config = composeFsmConfig([base, authGate], { transitions: "prepend" });
+```

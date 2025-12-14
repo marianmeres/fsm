@@ -2,6 +2,8 @@ import type {
 	FSMConfig,
 	FSMStatesConfigValue,
 	FSMPayload,
+	TransitionDef,
+	TransitionObj,
 } from "./fsm.ts";
 
 /**
@@ -54,9 +56,40 @@ export type ComposeFsmConfigOptions = {
 	 * - 'error': Throw an error if multiple fragments define the same value
 	 */
 	onConflict?: "last-wins" | "error";
+
+	/**
+	 * How to merge transitions (on) when multiple fragments define
+	 * handlers for the same event on the same state.
+	 *
+	 * - 'replace': Later fragments override earlier handlers (default)
+	 * - 'prepend': Later fragment transitions are prepended (run first)
+	 * - 'append': Later fragment transitions are appended (run last)
+	 *
+	 * In prepend/append modes, transitions are converted to arrays and
+	 * concatenated. Guards are evaluated in array order.
+	 */
+	transitions?: "replace" | "prepend" | "append";
 };
 
 type HookFn<TContext> = (context: TContext, payload?: FSMPayload) => void;
+
+/**
+ * Normalizes a TransitionDef to array form.
+ * - String "TARGET" → [{ target: "TARGET" }]
+ * - Object { target, guard } → [{ target, guard }]
+ * - Array already → returned as-is
+ */
+function normalizeToArray<TState extends string, TContext>(
+	def: TransitionDef<TState, TContext>
+): TransitionObj<TState, TContext>[] {
+	if (Array.isArray(def)) {
+		return def;
+	}
+	if (typeof def === "string") {
+		return [{ target: def as TState }];
+	}
+	return [def as TransitionObj<TState, TContext>];
+}
 
 /**
  * Composes multiple FSM configuration fragments into a single config.
@@ -99,7 +132,12 @@ export function composeFsmConfig<
 	fragments: (FSMConfigFragment<TState, TEvent, TContext> | false | null | undefined)[],
 	options: ComposeFsmConfigOptions = {}
 ): FSMConfig<TState, TEvent, TContext> {
-	const { hooks = "replace", context: contextMode = "merge", onConflict = "last-wins" } = options;
+	const {
+		hooks = "replace",
+		context: contextMode = "merge",
+		onConflict = "last-wins",
+		transitions: transitionsMode = "replace",
+	} = options;
 
 	// Filter out falsy values (allows conditional fragments)
 	const validFragments = fragments.filter(
@@ -160,10 +198,34 @@ export function composeFsmConfig<
 
 				// Merge transitions (on)
 				if (config.on) {
-					mergedStates[state]!.on = {
-						...mergedStates[state]!.on,
-						...config.on,
-					};
+					if (transitionsMode === "replace") {
+						// Current behavior: later fragments replace
+						mergedStates[state]!.on = {
+							...mergedStates[state]!.on,
+							...config.on,
+						};
+					} else {
+						// prepend or append mode: merge as arrays
+						const existingOn = mergedStates[state]!.on;
+						for (const [eventName, newDef] of Object.entries(config.on)) {
+							const event = eventName as TEvent | "*";
+							const existingDef = existingOn[event];
+
+							if (existingDef === undefined) {
+								// No existing handler, just set it
+								existingOn[event] = newDef;
+							} else {
+								// Merge as arrays
+								const existingArr = normalizeToArray<TState, TContext>(existingDef);
+								const newArr = normalizeToArray<TState, TContext>(newDef);
+
+								existingOn[event] =
+									transitionsMode === "prepend"
+										? [...newArr, ...existingArr] // new runs first
+										: [...existingArr, ...newArr]; // existing runs first
+							}
+						}
+					}
 				}
 
 				// Handle hooks based on mode
