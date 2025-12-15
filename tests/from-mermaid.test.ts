@@ -1,6 +1,9 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { fromMermaid, toTypeScript } from "../src/from-mermaid.ts";
 import { FSM, type TransitionObj } from "../src/fsm.ts";
+import { createClog } from "@marianmeres/clog";
+
+createClog.global.debug = false;
 
 Deno.test("simple state machine", () => {
 	const mermaid = `stateDiagram-v2
@@ -618,7 +621,10 @@ Deno.test("toTypeScript generates valid TypeScript code", () => {
 	assertEquals(tsCode.includes("type Context = { /* TODO:"), true);
 
 	// Check config structure
-	assertEquals(tsCode.includes("const config: FSMConfig<States, Transitions, Context>"), true);
+	assertEquals(
+		tsCode.includes("const config: FSMConfig<States, Transitions, Context>"),
+		true
+	);
 	assertEquals(tsCode.includes('initial: "IDLE"'), true);
 
 	// Check states
@@ -636,7 +642,10 @@ Deno.test("toTypeScript generates valid TypeScript code", () => {
 	assertEquals(tsCode.includes("guard: (ctx) => true, // TODO:"), true);
 
 	// Check action placeholder
-	assertEquals(tsCode.includes("action: (ctx) => { /* TODO: [ACTION: action] */ }"), true);
+	assertEquals(
+		tsCode.includes("action: (ctx) => { /* TODO: [ACTION: action] */ }"),
+		true
+	);
 });
 
 Deno.test("toTypeScript respects custom options", () => {
@@ -646,7 +655,10 @@ Deno.test("toTypeScript respects custom options", () => {
     ON --> OFF: toggle
 `;
 
-	const tsCode = toTypeScript(mermaid, { indent: "  ", configName: "myFsmConfig" });
+	const tsCode = toTypeScript(mermaid, {
+		indent: "  ",
+		configName: "myFsmConfig",
+	});
 
 	assertEquals(tsCode.includes("const myFsmConfig: FSMConfig"), true);
 	// Check 2-space indentation is used
@@ -676,7 +688,10 @@ Deno.test("toTypeScript handles internal transitions", () => {
 
 	// Internal transition should have action but no target
 	assertEquals(tsCode.includes("volumeUp: {"), true);
-	assertEquals(tsCode.includes("action: (ctx) => { /* TODO: [ACTION: action] */ }"), true);
+	assertEquals(
+		tsCode.includes("action: (ctx) => { /* TODO: [ACTION: action] */ }"),
+		true
+	);
 });
 
 Deno.test("extended action notation with descriptions", () => {
@@ -694,7 +709,10 @@ Deno.test("extended action notation with descriptions", () => {
 	assertEquals(config.initial, "IDLE");
 
 	// Check that action notations are preserved in toJSON
-	const saveAction = config.states.IDLE.on.save as TransitionObj<string, unknown>;
+	const saveAction = config.states.IDLE.on.save as TransitionObj<
+		string,
+		unknown
+	>;
 	assertEquals(saveAction.target, "SAVING");
 	assertEquals(typeof saveAction.action, "function");
 	// The toJSON should include the description
@@ -703,7 +721,10 @@ Deno.test("extended action notation with descriptions", () => {
 		"[ACTION: (action persist to database)]"
 	);
 
-	const alertAction = config.states.IDLE.on.alert as TransitionObj<string, unknown>;
+	const alertAction = config.states.IDLE.on.alert as TransitionObj<
+		string,
+		unknown
+	>;
 	assertEquals(alertAction.target, "NOTIFY");
 	assertEquals(
 		(alertAction.action as unknown as { toJSON: () => string }).toJSON(),
@@ -730,9 +751,14 @@ Deno.test("toTypeScript includes action descriptions in TODO comments", () => {
 
 	// Check that action description is in TODO
 	assertEquals(
-		tsCode.includes("action: (ctx) => { /* TODO: [ACTION: (action persist to database)] */ }"),
+		tsCode.includes(
+			"action: (ctx) => { /* TODO: [ACTION: (action persist to database)] */ }"
+		),
 		true
 	);
 	// Check guard is also preserved
-	assertEquals(tsCode.includes("guard: (ctx) => true, // TODO: [GUARD: [guard isValid]]"), true);
+	assertEquals(
+		tsCode.includes("guard: (ctx) => true, // TODO: [GUARD: [guard isValid]]"),
+		true
+	);
 });

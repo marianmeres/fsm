@@ -1,39 +1,6 @@
 import { createPubSub, type Unsubscriber } from "@marianmeres/pubsub";
+import { createClog, withNamespace, type Logger } from "@marianmeres/clog";
 import { fromMermaid as fromMermaidParser } from "./from-mermaid.ts";
-
-/**
- * Logger interface compatible with console and @marianmeres/clog.
- * All methods accept variadic arguments and return a string.
- */
-export interface Logger {
-	debug: (...args: unknown[]) => string;
-	log: (...args: unknown[]) => string;
-	warn: (...args: unknown[]) => string;
-	error: (...args: unknown[]) => string;
-}
-
-/**
- * Default console-based logger that wraps console methods.
- * Returns the first argument as a string (or empty string if no args).
- */
-const defaultLogger: Logger = {
-	debug: (...args: unknown[]) => {
-		console.debug(...args);
-		return String(args[0] ?? "");
-	},
-	log: (...args: unknown[]) => {
-		console.log(...args);
-		return String(args[0] ?? "");
-	},
-	warn: (...args: unknown[]) => {
-		console.warn(...args);
-		return String(args[0] ?? "");
-	},
-	error: (...args: unknown[]) => {
-		console.error(...args);
-		return String(args[0] ?? "");
-	},
-};
 
 /**
  * Arbitrary payload data passed during transitions.
@@ -93,8 +60,6 @@ export type FSMConfig<
 	states: FSMStatesConfigMap<TState, TEvent, TContext>;
 	// accepts a value OR a factory function for true resets
 	context?: TContext | (() => TContext);
-	/** Enable debug logging (default: false) */
-	debug?: boolean;
 	/** Custom logger implementing Logger interface (default: console) */
 	logger?: Logger;
 };
@@ -187,9 +152,7 @@ export function createFsm<
 	TState extends string,
 	TEvent extends string,
 	TContext = unknown
->(
-	config: FSMConfig<TState, TEvent, TContext>
-): FSM<TState, TEvent, TContext> {
+>(config: FSMConfig<TState, TEvent, TContext>): FSM<TState, TEvent, TContext> {
 	return new FSM<TState, TEvent, TContext>(config);
 }
 
@@ -252,36 +215,15 @@ export class FSM<
 	/** Logger instance */
 	#logger: Logger;
 
-	/** Debug mode flag */
-	#debug: boolean;
-
 	/**
 	 * Creates a new FSM instance.
 	 * @param config - The FSM configuration containing initial state, states definition, and optional context
 	 */
-	constructor(
-		public readonly config: FSMConfig<TState, TEvent, TContext>
-	) {
-		this.#debug = config.debug ?? false;
-		this.#logger = config.logger ?? defaultLogger;
+	constructor(public readonly config: FSMConfig<TState, TEvent, TContext>) {
+		this.#logger = withNamespace(config.logger ?? createClog(), "FSM");
 		this.#state = this.config.initial;
 		this.context = this.#initContext();
-		this.#debugLog(`FSM created with initial state "${this.#state}"`);
-	}
-
-	/** Log debug message if debug mode is enabled */
-	#debugLog(...args: unknown[]): void {
-		if (this.#debug) {
-			this.#logger.debug("[FSM]", ...args);
-		}
-	}
-
-	/**
-	 * Returns whether debug mode is enabled.
-	 * @returns `true` if debug logging is active, `false` otherwise
-	 */
-	get debug(): boolean {
-		return this.#debug;
+		this.#logger.debug(`FSM created with initial state "${this.#state}"`);
 	}
 
 	/**
@@ -354,7 +296,7 @@ export class FSM<
 	subscribe(
 		cb: (data: PublishedState<TState> & { context: TContext }) => void
 	): Unsubscriber {
-		this.#debugLog("subscribe() called");
+		this.#logger.debug("subscribe() called");
 		const unsub = this.#pubsub.subscribe("change", cb);
 		cb(this.#getNotifyData());
 		return unsub;
@@ -396,7 +338,9 @@ export class FSM<
 		payload?: FSMPayload,
 		assert = true
 	): TState | null {
-		this.#debugLog(`transition("${event}") called from state "${this.#state}"`);
+		this.#logger.debug(
+			`transition("${event}") called from state "${this.#state}"`
+		);
 		const currentStateConfig = this.config.states[this.#state];
 
 		if (!currentStateConfig || !currentStateConfig.on) {
@@ -413,7 +357,9 @@ export class FSM<
 			usedWildcard = !!transitionDef;
 
 			if (!transitionDef) {
-				this.#debugLog(`transition("${event}") failed: no matching transition`);
+				this.#logger.debug(
+					`transition("${event}") failed: no matching transition`
+				);
 				if (assert) {
 					// prettier-ignore
 					throw new Error(`Invalid transition "${event}" from state "${this.#state}"`);
@@ -425,14 +371,14 @@ export class FSM<
 		}
 
 		if (usedWildcard) {
-			this.#debugLog(`transition("${event}") using wildcard "*"`);
+			this.#logger.debug(`transition("${event}") using wildcard "*"`);
 		}
 
 		// returns the full normalized transition object
 		const activeTransition = this.#resolveTransition(transitionDef, payload);
 
 		if (!activeTransition) {
-			this.#debugLog(`transition("${event}") failed: guard rejected`);
+			this.#logger.debug(`transition("${event}") failed: guard rejected`);
 			if (assert) {
 				// prettier-ignore
 				throw new Error(`No valid transition found for event "${event}" in state "${this.#state}"`);
@@ -445,9 +391,9 @@ export class FSM<
 		// INTERNAL TRANSITION
 		// if there is no target, we stay in the same state and ONLY run the action.
 		if (!activeTransition.target) {
-			this.#debugLog(`transition("${event}") internal (no state change)`);
+			this.#logger.debug(`transition("${event}") internal (no state change)`);
 			if (typeof activeTransition.action === "function") {
-				this.#debugLog(`transition("${event}") executing action`);
+				this.#logger.debug(`transition("${event}") executing action`);
 				activeTransition.action(this.context, payload);
 			}
 			// here we do NOT fire onExit, onEnter, or update this.#previous, BUT we
@@ -457,13 +403,13 @@ export class FSM<
 		}
 
 		const nextState = activeTransition.target;
-		this.#debugLog(
+		this.#logger.debug(
 			`transition("${event}"): "${this.#state}" -> "${nextState}"`
 		);
 
 		// 1. exit current state side-effect
 		if (typeof currentStateConfig.onExit === "function") {
-			this.#debugLog(
+			this.#logger.debug(
 				`transition("${event}") executing onExit for "${this.#state}"`
 			);
 			currentStateConfig.onExit(this.context, payload);
@@ -471,7 +417,7 @@ export class FSM<
 
 		// 2. execute transition action (if defined)
 		if (typeof activeTransition.action === "function") {
-			this.#debugLog(`transition("${event}") executing action`);
+			this.#logger.debug(`transition("${event}") executing action`);
 			activeTransition.action(this.context, payload);
 		}
 
@@ -482,7 +428,7 @@ export class FSM<
 		// 4. enter new state side-effect
 		const nextStateConfig = this.config.states[nextState];
 		if (typeof nextStateConfig.onEnter === "function") {
-			this.#debugLog(
+			this.#logger.debug(
 				`transition("${event}") executing onEnter for "${nextState}"`
 			);
 			nextStateConfig.onEnter(this.context, payload);
@@ -547,7 +493,7 @@ export class FSM<
 	 * ```
 	 */
 	reset(): FSM<TState, TEvent, TContext> {
-		this.#debugLog(`reset() called, returning to "${this.config.initial}"`);
+		this.#logger.debug(`reset() called, returning to "${this.config.initial}"`);
 		this.#state = this.config.initial;
 		this.#previous = null;
 		this.context = this.#initContext();
@@ -591,13 +537,13 @@ export class FSM<
 	 * ```
 	 */
 	canTransition(event: TEvent, payload?: FSMPayload): boolean {
-		this.#debugLog(
+		this.#logger.debug(
 			`canTransition("${event}") called from state "${this.#state}"`
 		);
 		const currentStateConfig = this.config.states[this.#state];
 
 		if (!currentStateConfig || !currentStateConfig.on) {
-			this.#debugLog(
+			this.#logger.debug(
 				`canTransition("${event}") -> false (no transitions defined)`
 			);
 			return false;
@@ -611,7 +557,7 @@ export class FSM<
 			transitionDef = currentStateConfig.on["*" as TEvent];
 
 			if (!transitionDef) {
-				this.#debugLog(
+				this.#logger.debug(
 					`canTransition("${event}") -> false (no matching transition)`
 				);
 				return false;
@@ -621,7 +567,7 @@ export class FSM<
 		// Check if transition resolves to a valid target
 		const activeTransition = this.#resolveTransition(transitionDef, payload);
 		const result = activeTransition !== null;
-		this.#debugLog(`canTransition("${event}") -> ${result}`);
+		this.#logger.debug(`canTransition("${event}") -> ${result}`);
 
 		return result;
 	}
@@ -653,9 +599,7 @@ export class FSM<
 		TEvent extends string = string,
 		TContext = unknown
 	>(mermaidDiagram: string): FSM<TState, TEvent, TContext> {
-		const config = fromMermaidParser<TState, TEvent, TContext>(
-			mermaidDiagram
-		);
+		const config = fromMermaidParser<TState, TEvent, TContext>(mermaidDiagram);
 		return new FSM<TState, TEvent, TContext>(config);
 	}
 

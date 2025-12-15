@@ -4,6 +4,9 @@ import {
 	composeFsmConfig,
 	type FSMConfigFragment,
 } from "../src/compose-fsm-config.ts";
+import { createClog } from "@marianmeres/clog";
+
+createClog.global.debug = false;
 
 Deno.test("basic merge of two fragments", () => {
 	type STATES = "IDLE" | "RUNNING" | "STOPPED";
@@ -311,25 +314,6 @@ Deno.test("context replace mode", () => {
 	const fsm = createFsm(config);
 	// In replace mode, only last context is used
 	assertEquals(fsm.context.value, 42);
-});
-
-Deno.test("debug flag merging", () => {
-	type STATES = "A";
-	type TRANSITIONS = "go";
-
-	const f1: FSMConfigFragment<STATES, TRANSITIONS, unknown> = {
-		initial: "A",
-		debug: false,
-		states: { A: { on: { go: "A" } } },
-	};
-
-	const f2: FSMConfigFragment<STATES, TRANSITIONS, unknown> = {
-		debug: true,
-		states: {},
-	};
-
-	const config = composeFsmConfig([f1, f2]);
-	assertEquals(config.debug, true);
 });
 
 Deno.test("real-world example: feature branches", () => {

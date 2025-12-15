@@ -21,7 +21,6 @@ export type FSMConfigFragment<
 		[K in TState]?: Partial<FSMStatesConfigValue<TState, TEvent, TContext>>;
 	};
 	context?: TContext | (() => TContext);
-	debug?: boolean;
 };
 
 /**
@@ -129,7 +128,12 @@ export function composeFsmConfig<
 	TEvent extends string,
 	TContext
 >(
-	fragments: (FSMConfigFragment<TState, TEvent, TContext> | false | null | undefined)[],
+	fragments: (
+		| FSMConfigFragment<TState, TEvent, TContext>
+		| false
+		| null
+		| undefined
+	)[],
 	options: ComposeFsmConfigOptions = {}
 ): FSMConfig<TState, TEvent, TContext> {
 	const {
@@ -150,13 +154,15 @@ export function composeFsmConfig<
 
 	// Track values for conflict detection
 	let initial: TState | undefined;
-	let debug: boolean | undefined;
 
 	// For context merging, we collect all context values/factories
 	const contextSources: (TContext | (() => TContext))[] = [];
 
 	// Merged states map
-	const mergedStates: Record<string, FSMStatesConfigValue<TState, TEvent, TContext>> = {};
+	const mergedStates: Record<
+		string,
+		FSMStatesConfigValue<TState, TEvent, TContext>
+	> = {};
 
 	// Track hooks for composition mode
 	const hookCollectors: Record<
@@ -167,7 +173,11 @@ export function composeFsmConfig<
 	for (const fragment of validFragments) {
 		// Handle initial
 		if (fragment.initial !== undefined) {
-			if (onConflict === "error" && initial !== undefined && initial !== fragment.initial) {
+			if (
+				onConflict === "error" &&
+				initial !== undefined &&
+				initial !== fragment.initial
+			) {
 				throw new Error(
 					`Conflict: multiple fragments define different 'initial' values: "${initial}" vs "${fragment.initial}"`
 				);
@@ -180,16 +190,15 @@ export function composeFsmConfig<
 			contextSources.push(fragment.context);
 		}
 
-		// Handle debug
-		if (fragment.debug !== undefined) {
-			debug = fragment.debug;
-		}
-
 		// Merge states
 		if (fragment.states) {
 			for (const [stateName, stateConfig] of Object.entries(fragment.states)) {
 				const state = stateName as TState;
-				const config = stateConfig as FSMStatesConfigValue<TState, TEvent, TContext>;
+				const config = stateConfig as FSMStatesConfigValue<
+					TState,
+					TEvent,
+					TContext
+				>;
 
 				if (!mergedStates[state]) {
 					mergedStates[state] = { on: {} };
@@ -216,7 +225,9 @@ export function composeFsmConfig<
 								existingOn[event] = newDef;
 							} else {
 								// Merge as arrays
-								const existingArr = normalizeToArray<TState, TContext>(existingDef);
+								const existingArr = normalizeToArray<TState, TContext>(
+									existingDef
+								);
 								const newArr = normalizeToArray<TState, TContext>(newDef);
 
 								existingOn[event] =
@@ -263,12 +274,17 @@ export function composeFsmConfig<
 	}
 
 	if (initial === undefined) {
-		throw new Error("composeFsmConfig: no 'initial' state defined in any fragment");
+		throw new Error(
+			"composeFsmConfig: no 'initial' state defined in any fragment"
+		);
 	}
 
 	const result: FSMConfig<TState, TEvent, TContext> = {
 		initial,
-		states: mergedStates as Record<TState, FSMStatesConfigValue<TState, TEvent, TContext>>,
+		states: mergedStates as Record<
+			TState,
+			FSMStatesConfigValue<TState, TEvent, TContext>
+		>,
 	};
 
 	// Handle context based on mode
@@ -281,16 +297,15 @@ export function composeFsmConfig<
 			result.context = () => {
 				let merged = {} as TContext;
 				for (const source of contextSources) {
-					const value = typeof source === "function" ? (source as () => TContext)() : source;
+					const value =
+						typeof source === "function"
+							? (source as () => TContext)()
+							: source;
 					merged = { ...merged, ...value };
 				}
 				return merged;
 			};
 		}
-	}
-
-	if (debug !== undefined) {
-		result.debug = debug;
 	}
 
 	return result;

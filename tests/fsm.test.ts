@@ -1,11 +1,15 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { createFsm, FSM, type Logger } from "../src/fsm.ts";
+import { createClog, type Logger } from "@marianmeres/clog";
+import { createFsm, FSM } from "../src/fsm.ts";
+
+createClog.global.debug = false;
 
 Deno.test("basic", () => {
 	type STATES = "ON" | "OFF";
 	type TRANSITIONS = "start" | "stop";
 
-	const log: { current: string; previous: string | null; context: unknown }[] = [];
+	const log: { current: string; previous: string | null; context: unknown }[] =
+		[];
 
 	const fsm = createFsm<STATES, TRANSITIONS>({
 		initial: "OFF",
@@ -341,8 +345,8 @@ Deno.test("wildcard transitions", () => {
 	// Check mermaid output shows wildcard properly
 	const mermaid = fsm.toMermaid();
 	assertEquals(mermaid.includes("* (any)"), true);
-	assertEquals(mermaid.includes('ACTIVE --> ERROR: * (any) / (action)'), true);
-	assertEquals(mermaid.includes('ERROR --> IDLE: * (any)'), true);
+	assertEquals(mermaid.includes("ACTIVE --> ERROR: * (any) / (action)"), true);
+	assertEquals(mermaid.includes("ERROR --> IDLE: * (any)"), true);
 });
 
 Deno.test("canTransition with wildcards", () => {
@@ -397,7 +401,6 @@ Deno.test("custom logger with debug mode", () => {
 
 	const fsm = new FSM<STATES, TRANSITIONS>({
 		initial: "IDLE",
-		debug: true,
 		logger: customLogger,
 		states: {
 			IDLE: { on: { start: "ACTIVE" } },
@@ -415,45 +418,24 @@ Deno.test("custom logger with debug mode", () => {
 
 	// Should have logged transition info
 	assertEquals(debugLog.length >= 1, true);
-	assertEquals(debugLog.some((msg) => msg.includes('transition("start")')), true);
+	assertEquals(
+		debugLog.some((msg) => msg.includes('transition("start")')),
+		true
+	);
 
 	// Test canTransition logging
 	debugLog.length = 0;
 	fsm.canTransition("stop");
-	assertEquals(debugLog.some((msg) => msg.includes('canTransition("stop")')), true);
+	assertEquals(
+		debugLog.some((msg) => msg.includes('canTransition("stop")')),
+		true
+	);
 
 	// Test reset logging
 	debugLog.length = 0;
 	fsm.reset();
-	assertEquals(debugLog.some((msg) => msg.includes("reset()")), true);
-});
-
-Deno.test("debug mode disabled by default", () => {
-	const debugLog: string[] = [];
-
-	const customLogger: Logger = {
-		debug: (...args: unknown[]) => {
-			debugLog.push(args.map(String).join(" "));
-			return String(args[0] ?? "");
-		},
-		log: (...args: unknown[]) => String(args[0] ?? ""),
-		warn: (...args: unknown[]) => String(args[0] ?? ""),
-		error: (...args: unknown[]) => String(args[0] ?? ""),
-	};
-
-	const fsm = new FSM({
-		initial: "OFF",
-		logger: customLogger, // logger provided but debug is false
-		states: {
-			OFF: { on: { toggle: "ON" } },
-			ON: { on: { toggle: "OFF" } },
-		},
-	});
-
-	fsm.transition("toggle");
-	fsm.canTransition("toggle");
-	fsm.reset();
-
-	// No debug messages should be logged when debug is false
-	assertEquals(debugLog.length, 0);
+	assertEquals(
+		debugLog.some((msg) => msg.includes("reset()")),
+		true
+	);
 });

@@ -40,8 +40,7 @@ Creates a new FSM instance.
   - `initial: TState` - The initial state name
   - `states: FSMStatesConfigMap` - Map of state names to their configurations
   - `context?: TContext | (() => TContext)` - Optional context value or factory function
-  - `debug?: boolean` - Enable debug logging (default: `false`)
-  - `logger?: Logger` - Custom logger implementing Logger interface (default: console)
+  - `logger?: Logger` - Custom logger implementing Logger interface from `@marianmeres/clog`
 
 **Example:**
 ```typescript
@@ -83,21 +82,13 @@ readonly config: FSMConfig<TState, TEvent, TContext>
 
 The original configuration object passed to the constructor.
 
-#### `debug`
-
-```typescript
-get debug(): boolean
-```
-
-Returns whether debug mode is enabled. Useful for inspecting FSM configuration after instantiation.
-
 #### `logger`
 
 ```typescript
 get logger(): Logger
 ```
 
-Returns the logger instance used by this FSM. Default is `console`. See [Logger](#logger) interface for details.
+Returns the logger instance used by this FSM. Default is a clog logger with namespace "FSM". See [Logger](#logger) interface for details.
 
 ---
 
@@ -491,7 +482,6 @@ type FSMConfigFragment<TState, TEvent, TContext> = {
     [K in TState]?: Partial<FSMStatesConfigValue<TState, TEvent, TContext>>;
   };
   context?: TContext | (() => TContext);
-  debug?: boolean;
 };
 ```
 
@@ -586,7 +576,6 @@ type FSMConfig<TState, TEvent, TContext> = {
   initial: TState;
   states: FSMStatesConfigMap<TState, TEvent, TContext>;
   context?: TContext | (() => TContext);
-  debug?: boolean;
   logger?: Logger;
 };
 ```
@@ -687,7 +676,7 @@ type Unsubscriber = () => void;
 
 ### `Logger`
 
-Logger interface compatible with console and `@marianmeres/clog`.
+Logger interface from `@marianmeres/clog`. The FSM imports and uses the `Logger` type directly from that package.
 
 ```typescript
 interface Logger {
@@ -698,4 +687,4 @@ interface Logger {
 }
 ```
 
-All methods accept variadic arguments and return a string (first argument converted to string). The FSM uses only the `debug` method for logging when `debug: true` is set.
+All methods accept variadic arguments and return a string. The FSM uses the `debug` method for logging. Debug output is controlled via `createClog.global.debug` or by the logger instance's configuration.

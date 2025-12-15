@@ -45,7 +45,7 @@ tests/
 {
   initial: string,              // Required: initial state
   context?: T | () => T,        // Optional: shared data or factory
-  debug?: boolean,              // Enable logging
+  logger?: Logger,              // Optional: custom logger from @marianmeres/clog
   states: {
     [stateName]: {
       onEnter?: (ctx, payload) => void,
@@ -123,4 +123,5 @@ fsm.subscribe(data => log.push(data));
 ## Dependencies
 
 - `@marianmeres/pubsub` - Internal pub/sub for subscriptions
+- `@marianmeres/clog` - Logging (Logger type and debug output)
 - `@std/assert` - Test assertions (dev only)

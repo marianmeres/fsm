@@ -464,29 +464,32 @@ For mutations, use **action hooks** (`action`, `onEnter`, `onExit`) which are de
 
 ## Debug Logging
 
-Enable debug mode to log FSM operations for troubleshooting:
+The FSM uses `@marianmeres/clog` for debug logging. Debug output is controlled via the clog library's global setting or by providing a custom logger:
 
 ```typescript
+import { createClog } from "@marianmeres/clog";
+
+// Enable debug logging globally
+createClog.global.debug = true;
+
 const fsm = new FSM({
     initial: "IDLE",
-    debug: true,  // Enable debug logging
     states: { ... }
 });
 ```
 
-Debug logging covers FSM creation, transitions, guard evaluations, lifecycle hooks, and reset operations. Messages are output via `console.debug` by default.
+Debug logging covers FSM creation, transitions, guard evaluations, lifecycle hooks, and reset operations.
 
 ### Custom Logger
 
-You can provide a custom logger implementing the `Logger` interface (compatible with `@marianmeres/clog`):
+You can provide a custom logger implementing the `Logger` interface (from `@marianmeres/clog`):
 
 ```typescript
-import { FSM, type Logger } from "@marianmeres/fsm";
+import { FSM } from "@marianmeres/fsm";
 import { createClog } from "@marianmeres/clog";
 
 const fsm = new FSM({
     initial: "IDLE",
-    debug: true,
     logger: createClog('my-app-fsm'), // see @marianmeres/clog for more
     states: { ... }
 });

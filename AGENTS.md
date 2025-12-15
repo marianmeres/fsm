@@ -31,8 +31,7 @@ tests/
 {
   initial: string,           // Required: initial state name
   context?: T | () => T,     // Optional: shared data or factory function
-  debug?: boolean,           // Optional: enable debug logging (default: false)
-  logger?: Logger,           // Optional: custom logger (default: console)
+  logger?: Logger,           // Optional: custom logger from @marianmeres/clog
   states: {
     [stateName: string]: {
       onEnter?: (ctx, payload) => void,   // Lifecycle: entering state
@@ -82,7 +81,7 @@ tests/
 | `FSMPayload` | type | Transition payload type (unknown) |
 | `FSMConfigFragment` | type | Partial config for composition |
 | `ComposeFsmConfigOptions` | type | Options for composeFsmConfig |
-| `Logger` | interface | Logger interface for debug output |
+| `Logger` | interface | Logger interface from @marianmeres/clog |
 
 ### FSM Class Methods
 
@@ -92,7 +91,6 @@ tests/
 | `state` | `get state(): TState` | Get current state (non-reactive) |
 | `context` | `TContext` | Mutable context object |
 | `config` | `readonly FSMConfig` | Original configuration |
-| `debug` | `get debug(): boolean` | Get debug mode status |
 | `logger` | `get logger(): Logger` | Get logger instance |
 | `subscribe` | `(cb) => Unsubscriber` | Subscribe to state changes |
 | `transition` | `(event, payload?, assert?) => TState \| null` | Execute transition |
@@ -207,18 +205,24 @@ FSM<TState, TEvent, TContext>
 
 ## Debug Logging
 
-Enable debug mode to log FSM operations:
+Debug logging is controlled via `@marianmeres/clog`:
 
 ```typescript
+import { createClog } from "@marianmeres/clog";
+
+// Enable debug logging globally
+createClog.global.debug = true;
+
 const fsm = new FSM({
   initial: "IDLE",
-  debug: true,           // Enable debug logging
   logger: customLogger,  // Optional: custom Logger implementation
   states: { ... }
 });
 ```
 
 ### Logger Interface
+
+The `Logger` type is imported from `@marianmeres/clog`:
 
 ```typescript
 interface Logger {
@@ -228,8 +232,6 @@ interface Logger {
   error: (...args: unknown[]) => string;
 }
 ```
-
-Compatible with `console` and `@marianmeres/clog`.
 
 ## Testing Patterns
 
