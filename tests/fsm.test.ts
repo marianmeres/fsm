@@ -419,7 +419,7 @@ Deno.test("custom logger with debug mode", () => {
 	// Should have logged transition info
 	assertEquals(debugLog.length >= 1, true);
 	assertEquals(
-		debugLog.some((msg) => msg.includes('transition("start")')),
+		debugLog.some((msg) => msg.includes("'start' transition")),
 		true
 	);
 
@@ -427,7 +427,7 @@ Deno.test("custom logger with debug mode", () => {
 	debugLog.length = 0;
 	fsm.canTransition("stop");
 	assertEquals(
-		debugLog.some((msg) => msg.includes('canTransition("stop")')),
+		debugLog.some((msg) => msg.includes("'stop' can trigger")),
 		true
 	);
 
@@ -435,7 +435,7 @@ Deno.test("custom logger with debug mode", () => {
 	debugLog.length = 0;
 	fsm.reset();
 	assertEquals(
-		debugLog.some((msg) => msg.includes("reset()")),
+		debugLog.some((msg) => msg.includes("Resetting FSM")),
 		true
 	);
 });

@@ -296,7 +296,7 @@ export class FSM<
 	subscribe(
 		cb: (data: PublishedState<TState> & { context: TContext }) => void
 	): Unsubscriber {
-		this.#logger.debug("subscribe() called");
+		this.#logger.debug("New subscription registered.");
 		const unsub = this.#pubsub.subscribe("change", cb);
 		cb(this.#getNotifyData());
 		return unsub;
@@ -339,7 +339,7 @@ export class FSM<
 		assert = true
 	): TState | null {
 		this.#logger.debug(
-			`transition("${event}") called from state "${this.#state}"`
+			`Attempting '${event}' transition from '${this.#state}' state.`
 		);
 		const currentStateConfig = this.config.states[this.#state];
 
@@ -358,7 +358,7 @@ export class FSM<
 
 			if (!transitionDef) {
 				this.#logger.debug(
-					`transition("${event}") failed: no matching transition`
+					`Transition on '${event}' failed: no matching handler found.`
 				);
 				if (assert) {
 					// prettier-ignore
@@ -371,14 +371,14 @@ export class FSM<
 		}
 
 		if (usedWildcard) {
-			this.#logger.debug(`transition("${event}") using wildcard "*"`);
+			this.#logger.debug(`Using wildcard handler for '${event}' event.`);
 		}
 
 		// returns the full normalized transition object
 		const activeTransition = this.#resolveTransition(transitionDef, payload);
 
 		if (!activeTransition) {
-			this.#logger.debug(`transition("${event}") failed: guard rejected`);
+			this.#logger.debug(`Transition on '${event}' rejected by guard.`);
 			if (assert) {
 				// prettier-ignore
 				throw new Error(`No valid transition found for event "${event}" in state "${this.#state}"`);
@@ -391,9 +391,9 @@ export class FSM<
 		// INTERNAL TRANSITION
 		// if there is no target, we stay in the same state and ONLY run the action.
 		if (!activeTransition.target) {
-			this.#logger.debug(`transition("${event}") internal (no state change)`);
+			this.#logger.debug(`Processing '${event}' as internal transition.`);
 			if (typeof activeTransition.action === "function") {
-				this.#logger.debug(`transition("${event}") executing action`);
+				this.#logger.debug(`Executing action for '${event}' transition.`);
 				activeTransition.action(this.context, payload);
 			}
 			// here we do NOT fire onExit, onEnter, or update this.#previous, BUT we
@@ -404,20 +404,20 @@ export class FSM<
 
 		const nextState = activeTransition.target;
 		this.#logger.debug(
-			`transition("${event}"): "${this.#state}" -> "${nextState}"`
+			`Transitioning from '${this.#state}' to '${nextState}' on '${event}'.`
 		);
 
 		// 1. exit current state side-effect
 		if (typeof currentStateConfig.onExit === "function") {
 			this.#logger.debug(
-				`transition("${event}") executing onExit for "${this.#state}"`
+				`Executing onExit hook for '${this.#state}' state.`
 			);
 			currentStateConfig.onExit(this.context, payload);
 		}
 
 		// 2. execute transition action (if defined)
 		if (typeof activeTransition.action === "function") {
-			this.#logger.debug(`transition("${event}") executing action`);
+			this.#logger.debug(`Executing action for '${event}' transition.`);
 			activeTransition.action(this.context, payload);
 		}
 
@@ -429,7 +429,7 @@ export class FSM<
 		const nextStateConfig = this.config.states[nextState];
 		if (typeof nextStateConfig.onEnter === "function") {
 			this.#logger.debug(
-				`transition("${event}") executing onEnter for "${nextState}"`
+				`Executing onEnter hook for '${nextState}' state.`
 			);
 			nextStateConfig.onEnter(this.context, payload);
 		}
@@ -493,7 +493,7 @@ export class FSM<
 	 * ```
 	 */
 	reset(): FSM<TState, TEvent, TContext> {
-		this.#logger.debug(`reset() called, returning to "${this.config.initial}"`);
+		this.#logger.debug(`Resetting FSM to initial '${this.config.initial}' state.`);
 		this.#state = this.config.initial;
 		this.#previous = null;
 		this.context = this.#initContext();
@@ -538,13 +538,13 @@ export class FSM<
 	 */
 	canTransition(event: TEvent, payload?: FSMPayload): boolean {
 		this.#logger.debug(
-			`canTransition("${event}") called from state "${this.#state}"`
+			`Checking if '${event}' can trigger transition from '${this.#state}'.`
 		);
 		const currentStateConfig = this.config.states[this.#state];
 
 		if (!currentStateConfig || !currentStateConfig.on) {
 			this.#logger.debug(
-				`canTransition("${event}") -> false (no transitions defined)`
+				`Cannot transition on '${event}': no transitions defined for current state.`
 			);
 			return false;
 		}
@@ -558,7 +558,7 @@ export class FSM<
 
 			if (!transitionDef) {
 				this.#logger.debug(
-					`canTransition("${event}") -> false (no matching transition)`
+					`Cannot transition on '${event}': no matching handler found.`
 				);
 				return false;
 			}
@@ -567,7 +567,7 @@ export class FSM<
 		// Check if transition resolves to a valid target
 		const activeTransition = this.#resolveTransition(transitionDef, payload);
 		const result = activeTransition !== null;
-		this.#logger.debug(`canTransition("${event}") -> ${result}`);
+		this.#logger.debug(`Transition on '${event}' is ${result ? "allowed" : "denied"}.`);
 
 		return result;
 	}
