@@ -2,6 +2,7 @@
 
 [![NPM version](https://img.shields.io/npm/v/@marianmeres/fsm.svg)](https://www.npmjs.com/package/@marianmeres/fsm)
 [![JSR version](https://jsr.io/badges/@marianmeres/fsm)](https://jsr.io/@marianmeres/fsm)
+[![License](https://img.shields.io/npm/l/@marianmeres/fsm)](LICENSE)
 
 A lightweight, typed, framework agnostic and synchronous finite state machine that acts as a pure state graph description.
 
@@ -642,3 +643,7 @@ const config = composeFsmConfig([
 ## API Reference
 
 For complete API documentation including all types, methods, and detailed parameter descriptions, see [API.md](API.md).
+
+## License
+
+[MIT](LICENSE)

@@ -177,12 +177,15 @@ Note: Transitions inside composite state blocks ARE parsed as regular transition
 | Package | Purpose |
 |---------|---------|
 | `@marianmeres/pubsub` | Internal pub/sub for reactive subscriptions |
+| `@marianmeres/clog` | Logging (Logger type, debug output) |
 | `@std/assert` | Test assertions (dev) |
 
 ## Build System
 
 - **Runtime**: Deno
 - **Test**: `deno test` / `deno task test`
+- **Test specific**: `deno test tests/fsm.test.ts` (or other test files)
+- **Type check**: `deno check src/mod.ts`
 - **NPM Build**: `deno task npm:build` (uses `@marianmeres/npmbuild`)
 - **Publish NPM**: `deno task npm:publish`
 
