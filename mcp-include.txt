@@ -1,0 +1,1 @@
+Type-safe finite state machine library with reactive subscriptions, Mermaid diagram roundtrip (parse and generate), guard/action transitions, wildcard events, and composable configuration fragments. Supports Deno and Node.js.
