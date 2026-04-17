@@ -1,5 +1,12 @@
 # API Reference
 
+> **v3 changes:** see [CHANGELOG.md](CHANGELOG.md) for the full breaking-change list.
+> Highlights inline below: `transition()` returns `null` on failure, `reset()` runs
+> hooks, wildcard `"*"` is also a fallback when specific guards reject, constructor
+> validates `initial` and transition targets, `PublishedState` gained a `context`
+> field, `composeFsmConfig` option `onConflict` renamed to `onInitialConflict`,
+> and the FSM has new helpers (`previous`, `matches`, `cannot`, `getSnapshot`).
+
 ## Table of Contents
 
 - [FSM Class](#fsm-class)
@@ -42,6 +49,13 @@ Creates a new FSM instance.
   - `context?: TContext | (() => TContext)` - Optional context value or factory function
   - `logger?: Logger` - Custom logger implementing Logger interface from `@marianmeres/clog`
 
+**Validation (v3):** the constructor throws if `initial` is not a key of `states`,
+or if any transition target references a state that is not in `states`. The error
+message names the offending state and transition.
+
+**Immutability (v3):** the configuration object is deep-frozen after construction.
+Mutating `fsm.config.states.X.on` after construction throws in strict mode.
+
 **Example:**
 ```typescript
 const fsm = new FSM<"IDLE" | "LOADING", "load" | "done", { count: number }>({
@@ -66,6 +80,14 @@ get state(): TState
 
 Returns the current state of the FSM. This is a non-reactive getter; use `subscribe()` for reactive updates.
 
+#### `previous`
+
+```typescript
+get previous(): TState | null
+```
+
+Returns the previous state of the FSM, or `null` if no transition has occurred yet.
+
 #### `context`
 
 ```typescript
@@ -74,13 +96,17 @@ context: TContext
 
 A custom data object accessible throughout the FSM's lifetime. Context should contain only data (no functions) to ensure serializability and cloneability. Mutate context in action hooks (`action`, `onEnter`, `onExit`), not in guards.
 
+Plain-object context is deep-cloned (via `structuredClone`) on construction and on
+every `reset()`, so mutating `fsm.context` never leaks back to `config.context`.
+
 #### `config`
 
 ```typescript
 readonly config: FSMConfig<TState, TEvent, TContext>
 ```
 
-The original configuration object passed to the constructor.
+The original configuration object passed to the constructor. Deep-frozen after
+construction.
 
 #### `logger`
 
@@ -133,6 +159,12 @@ transition(
 
 Requests the FSM to transition based on the given event.
 
+**Resolution order:**
+1. Specific event handler is tried first. If it resolves to a valid transition, use it.
+2. Otherwise (no specific handler, or its guards all rejected), the wildcard `"*"`
+   handler is tried.
+3. If neither resolves, the call throws (when `assert` is true) or returns `null`.
+
 **Execution order for external transitions:**
 1. `onExit` hook of the current state
 2. `action` of the transition edge
@@ -142,20 +174,32 @@ Requests the FSM to transition based on the given event.
 
 For internal transitions (no target defined), only the action runs and subscribers are notified.
 
+**Error handling:**
+- Errors from `onExit`, `action`, guards, and `onEnter` are wrapped with the
+  originating event/state/hook name for diagnostics. The original error is preserved
+  as the new error's `cause`.
+- If `onExit` or `action` throws, no state change occurs.
+- If `onEnter` throws, the state has already changed; subscribers are still notified
+  (in a `finally` block) before the error propagates.
+
 **Parameters:**
 - `event` - The transition event name
 - `payload` - Optional data passed to guards, actions, and lifecycle hooks
-- `assert` - If `true` (default), throws on invalid transitions; if `false`, returns current state
+- `assert` - If `true` (default), throws on invalid transitions; if `false`, returns
+  `null`
 
-**Returns:** The new state after transition, or current state if transition failed in non-assert mode.
+**Returns:** The new state after a successful transition, or `null` if the transition
+failed in non-assert mode. (v3 change: previously returned current state on failure.)
 
-**Throws:** Error if the transition is invalid and `assert` is `true`.
+**Throws:** Error if the transition is invalid and `assert` is `true`. Hook errors
+always propagate, regardless of `assert`.
 
 **Example:**
 ```typescript
-fsm.transition("fetch");                    // Basic transition
-fsm.transition("resolve", { data: "..." }); // With payload
-fsm.transition("invalid", null, false);     // Non-throwing mode
+fsm.transition("fetch");                              // Basic transition
+fsm.transition("resolve", { data: "..." });           // With payload
+const result = fsm.transition("invalid", null, false);
+if (result === null) { /* failed */ }
 ```
 
 ---
@@ -166,7 +210,12 @@ fsm.transition("invalid", null, false);     // Non-throwing mode
 canTransition(event: TEvent, payload?: FSMPayload): boolean
 ```
 
-Checks whether a transition is valid from the current state without executing it. This is a pure query operation that does not modify FSM state. Guards are evaluated against a cloned context to ensure they cannot mutate state.
+Checks whether a transition is valid from the current state without executing it.
+This is a pure query operation that does not modify FSM state. Guards are evaluated
+against a cloned context to ensure they cannot mutate state.
+
+Resolution mirrors `transition()`: specific event first, then wildcard fallback when
+the specific handler is missing OR all its guards reject.
 
 **Parameters:**
 - `event` - The transition event name to check
@@ -181,6 +230,21 @@ if (fsm.canTransition("submit")) {
 } else {
   console.log("Submit not available");
 }
+```
+
+---
+
+#### `cannot()`
+
+```typescript
+cannot(event: TEvent, payload?: FSMPayload): boolean
+```
+
+Inverse of `canTransition()`. Reads better at call sites that gate on the negative.
+
+**Example:**
+```typescript
+if (fsm.cannot("submit")) disableButton();
 ```
 
 ---
@@ -207,13 +271,57 @@ if (fsm.is("LOADING")) {
 
 ---
 
+#### `matches()`
+
+```typescript
+matches(...states: TState[]): boolean
+```
+
+Returns `true` if the FSM is in any of the given states. Convenience for the common
+"is in one of these" check.
+
+**Example:**
+```typescript
+if (fsm.matches("LOADING", "RETRYING")) {
+  showSpinner();
+}
+```
+
+---
+
+#### `getSnapshot()`
+
+```typescript
+getSnapshot(): { state: TState; previous: TState | null; context: TContext }
+```
+
+Returns a snapshot of the current FSM state. The `context` is a deep clone produced
+via `structuredClone`, so mutating it does not affect the FSM. Useful for tests,
+serialization, and time-travel.
+
+**Example:**
+```typescript
+const snap = fsm.getSnapshot();
+localStorage.setItem("fsm", JSON.stringify(snap));
+```
+
+---
+
 #### `reset()`
 
 ```typescript
 reset(): FSM<TState, TEvent, TContext>
 ```
 
-Resets the FSM to its initial state and re-initializes the context. If context was defined as a factory function, a fresh context is created. Subscribers are notified after reset.
+Resets the FSM to its initial state and re-initializes the context.
+
+**Lifecycle (v3):** `reset()` calls `onExit` on the current state, swaps to the
+initial state and a fresh context, then calls `onEnter` on the initial state, then
+notifies subscribers. Hooks receive `undefined` as payload. (Previously, `reset()`
+bypassed both hooks.)
+
+If context was defined as a factory function, a fresh context is created. Plain-object
+context is deep-cloned from the original `config.context`.
 
 **Returns:** The FSM instance for chaining.
 
@@ -442,7 +550,8 @@ Composes multiple FSM configuration fragments into a single configuration. This 
 **Throws:**
 - Error if no valid fragments are provided
 - Error if no `initial` state is defined in any fragment
-- Error if `onConflict: "error"` and multiple fragments define conflicting values
+- Error if `onInitialConflict: "error"` and multiple fragments define different
+  `initial` values
 
 **Example:**
 ```typescript
@@ -500,7 +609,7 @@ Options for controlling how fragments are composed.
 type ComposeFsmConfigOptions = {
   hooks?: "replace" | "compose";
   context?: "merge" | "replace";
-  onConflict?: "last-wins" | "error";
+  onInitialConflict?: "last-wins" | "error";
   transitions?: "replace" | "prepend" | "append";
 };
 ```
@@ -510,14 +619,18 @@ type ComposeFsmConfigOptions = {
 | Option | Values | Default | Description |
 |--------|--------|---------|-------------|
 | `hooks` | `"replace"` | `"replace"` | Later fragments override earlier hooks |
-| | `"compose"` | | All hooks run sequentially in fragment order |
-| `context` | `"merge"` | `"merge"` | Shallow-merge context from all fragments |
+| | `"compose"` | | All hooks run sequentially in fragment order; mutations are visible across hooks |
+| `context` | `"merge"` | `"merge"` | Shallow-merge context from all fragments; each fragment is deep-cloned before merging |
 | | `"replace"` | | Later fragments completely override earlier context |
-| `onConflict` | `"last-wins"` | `"last-wins"` | Later fragments override `initial` |
+| `onInitialConflict` | `"last-wins"` | `"last-wins"` | Later fragments override `initial` |
 | | `"error"` | | Throw if multiple fragments define different `initial` values |
 | `transitions` | `"replace"` | `"replace"` | Later fragments override earlier transition handlers |
 | | `"prepend"` | | Later fragment transitions prepended (evaluated first) |
 | | `"append"` | | Later fragment transitions appended (evaluated last) |
+
+> **v3 rename:** `onConflict` was renamed to `onInitialConflict` to make its scope
+> explicit (it only governs `initial` conflicts; context, transitions, and hooks
+> have their own dedicated knobs).
 
 **Transition Merging:**
 
@@ -539,7 +652,8 @@ In prepend/append modes, all transition forms (string, object, array) are normal
 
 **Context Merging:**
 
-When using `context: "merge"` (the default), context objects from all fragments are shallow-merged in order. This works with both static objects and factory functions:
+When using `context: "merge"` (the default), context objects from all fragments are
+shallow-merged in order. This works with both static objects and factory functions:
 
 ```typescript
 const f1 = { context: { a: 1, shared: "from-f1" } };
@@ -549,16 +663,18 @@ const config = composeFsmConfig([f1, f2]);
 // Resulting context: { a: 1, b: 2, shared: "from-f2" }
 ```
 
-The merged context is always wrapped in a factory function to ensure proper reset behavior.
+The merged context is always wrapped in a factory function so reset produces a fresh
+tree. Each fragment's plain-object context is deep-cloned before being merged, so
+nested objects are not shared across fragments or across resets.
 
 **Example with options:**
 ```typescript
 const config = composeFsmConfig(
   [fragment1, fragment2],
   {
-    hooks: "compose",      // Both fragments' onEnter/onExit run
-    context: "merge",      // Merge context from all fragments (default)
-    onConflict: "error"    // Throw if both define different 'initial'
+    hooks: "compose",            // Both fragments' onEnter/onExit run
+    context: "merge",            // Merge context from all fragments (default)
+    onInitialConflict: "error"   // Throw if both define different 'initial'
   }
 );
 ```
@@ -641,14 +757,35 @@ type TransitionObj<TState, TContext> = {
 
 ---
 
-### `PublishedState<TState>`
+### `PublishedState<TState, TContext>`
 
 Published state data sent to subscribers.
 
 ```typescript
-type PublishedState<TState> = {
+type PublishedState<TState, TContext = unknown> = {
   current: TState;
   previous: TState | null;
+  context: TContext;
+};
+```
+
+> **v3 change:** `PublishedState` gained a `context` field (subscribers were already
+> receiving it at runtime) and a second generic parameter for the context type. The
+> generic defaults to `unknown`, so single-arg usage like `PublishedState<MyState>`
+> still works.
+
+---
+
+### `FSMSnapshot<TState, TContext>`
+
+Return shape of `getSnapshot()`. The `context` is a deep clone — safe to mutate
+or serialize.
+
+```typescript
+type FSMSnapshot<TState, TContext> = {
+  state: TState;
+  previous: TState | null;
+  context: TContext;
 };
 ```
 

@@ -382,6 +382,363 @@ Deno.test("canTransition with wildcards", () => {
 	assertEquals(fsm.canTransition("anything"), true);
 });
 
+// =============================================================================
+// v3 behavior tests
+// =============================================================================
+
+Deno.test("v3: constructor validates initial state exists", () => {
+	// deno-lint-ignore no-explicit-any
+	const badConfig: any = {
+		initial: "MISSING",
+		states: { IDLE: { on: {} } },
+	};
+	assertThrows(
+		() => new FSM(badConfig),
+		Error,
+		'initial state "MISSING" is not defined in states'
+	);
+});
+
+Deno.test("v3: constructor validates transition targets exist", () => {
+	// deno-lint-ignore no-explicit-any
+	const badConfig: any = {
+		initial: "A",
+		states: { A: { on: { go: "MISSING" } } },
+	};
+	assertThrows(
+		() => new FSM(badConfig),
+		Error,
+		'transition "go" in state "A" targets unknown state "MISSING"'
+	);
+});
+
+Deno.test("v3: constructor validates array transition targets", () => {
+	// deno-lint-ignore no-explicit-any
+	const badConfig: any = {
+		initial: "A",
+		states: { A: { on: { go: [{ target: "MISSING" }] } } },
+	};
+	assertThrows(
+		() => new FSM(badConfig),
+		Error,
+		'transition "go" in state "A" targets unknown state "MISSING"'
+	);
+});
+
+Deno.test("v3: config is deeply frozen after construction", () => {
+	const fsm = new FSM<"A" | "B", "go">({
+		initial: "A",
+		states: {
+			A: { on: { go: "B" } },
+			B: { on: {} },
+		},
+	});
+
+	// Top-level should be frozen
+	assertEquals(Object.isFrozen(fsm.config), true);
+	// Nested objects should be frozen too
+	assertEquals(Object.isFrozen(fsm.config.states), true);
+	assertEquals(Object.isFrozen(fsm.config.states.A), true);
+	assertEquals(Object.isFrozen(fsm.config.states.A.on), true);
+});
+
+Deno.test("v3: PublishedState includes context", () => {
+	type CTX = { value: number };
+	const fsm = new FSM<"A", "go", CTX>({
+		initial: "A",
+		context: { value: 42 },
+		states: { A: { on: { go: "A" } } },
+	});
+
+	let received: { current: string; previous: string | null; context: CTX } | null =
+		null;
+	fsm.subscribe((data) => {
+		received = data;
+	});
+
+	assertEquals(received !== null, true);
+	assertEquals(received!.current, "A");
+	assertEquals(received!.context.value, 42);
+});
+
+Deno.test("v3: reset() runs onExit and onEnter hooks", () => {
+	type STATES = "IDLE" | "ACTIVE";
+	const log: string[] = [];
+
+	const fsm = new FSM<STATES, "start">({
+		initial: "IDLE",
+		states: {
+			IDLE: {
+				onEnter: () => log.push("enter:IDLE"),
+				onExit: () => log.push("exit:IDLE"),
+				on: { start: "ACTIVE" },
+			},
+			ACTIVE: {
+				onEnter: () => log.push("enter:ACTIVE"),
+				onExit: () => log.push("exit:ACTIVE"),
+				on: {},
+			},
+		},
+	});
+
+	fsm.transition("start");
+	assertEquals(log, ["exit:IDLE", "enter:ACTIVE"]);
+
+	log.length = 0;
+	fsm.reset();
+	// reset runs onExit on current (ACTIVE), then onEnter on initial (IDLE)
+	assertEquals(log, ["exit:ACTIVE", "enter:IDLE"]);
+});
+
+Deno.test("v3: transition returns null on failure with assert=false", () => {
+	const fsm = new FSM<"A" | "B", "go" | "missing">({
+		initial: "A",
+		states: {
+			A: { on: { go: "B" } },
+			B: { on: {} },
+		},
+	});
+
+	// Failure returns null (not the current state)
+	const result = fsm.transition("missing", undefined, false);
+	assertEquals(result, null);
+	assertEquals(fsm.state, "A");
+
+	// Success returns the new state
+	assertEquals(fsm.transition("go", undefined, false), "B");
+});
+
+Deno.test("v3: deep clone of plain-object context on init", () => {
+	type CTX = { nested: { value: number } };
+	const original = { nested: { value: 1 } };
+
+	const fsm = new FSM<"A", "go", CTX>({
+		initial: "A",
+		context: original,
+		states: { A: { on: { go: "A" } } },
+	});
+
+	// Mutating fsm.context.nested must not leak back to original
+	fsm.context.nested.value = 999;
+	assertEquals(original.nested.value, 1);
+
+	// reset() restores nested defaults
+	fsm.reset();
+	assertEquals(fsm.context.nested.value, 1);
+});
+
+Deno.test("v3: wildcard fallback fires when specific guard rejects", () => {
+	type STATES = "A" | "B" | "C";
+	const fsm = new FSM<STATES, "go">({
+		initial: "A",
+		states: {
+			A: {
+				on: {
+					go: { target: "B", guard: () => false }, // always rejects
+					"*": "C", // wildcard fallback
+				},
+			},
+			B: { on: {} },
+			C: { on: {} },
+		},
+	});
+
+	// Specific guard rejects → wildcard fires → C
+	assertEquals(fsm.transition("go"), "C");
+});
+
+Deno.test("v3: canTransition uses wildcard fallback when specific guard rejects", () => {
+	type STATES = "A" | "B" | "C";
+	const fsm = new FSM<STATES, "go">({
+		initial: "A",
+		states: {
+			A: {
+				on: {
+					go: { target: "B", guard: () => false },
+					"*": "C",
+				},
+			},
+			B: { on: {} },
+			C: { on: {} },
+		},
+	});
+
+	// canTransition should reflect that the wildcard rescues us
+	assertEquals(fsm.canTransition("go"), true);
+});
+
+Deno.test("v3: onEnter throw still notifies subscribers", () => {
+	type STATES = "A" | "B";
+	const log: { current: string }[] = [];
+
+	const fsm = new FSM<STATES, "go">({
+		initial: "A",
+		states: {
+			A: { on: { go: "B" } },
+			B: {
+				onEnter: () => {
+					throw new Error("boom");
+				},
+				on: {},
+			},
+		},
+	});
+
+	fsm.subscribe(({ current }) => log.push({ current }));
+	log.length = 0; // drop initial
+
+	assertThrows(() => fsm.transition("go"), Error, "onEnter");
+
+	// State is committed, subscribers notified, even though onEnter threw
+	assertEquals(fsm.state, "B");
+	assertEquals(log.length, 1);
+	assertEquals(log[0].current, "B");
+});
+
+Deno.test("v3: guard throw is wrapped with diagnostic context", () => {
+	const fsm = new FSM<"A" | "B", "go">({
+		initial: "A",
+		states: {
+			A: {
+				on: {
+					go: {
+						target: "B",
+						guard: () => {
+							throw new Error("inner");
+						},
+					},
+				},
+			},
+			B: { on: {} },
+		},
+	});
+
+	assertThrows(() => fsm.transition("go"), Error, 'guard for "go" in state "A"');
+});
+
+Deno.test("v3: action throw is wrapped with diagnostic context", () => {
+	const fsm = new FSM<"A" | "B", "go">({
+		initial: "A",
+		states: {
+			A: {
+				on: {
+					go: {
+						target: "B",
+						action: () => {
+							throw new Error("inner");
+						},
+					},
+				},
+			},
+			B: { on: {} },
+		},
+	});
+
+	assertThrows(() => fsm.transition("go"), Error, 'action for "go" in state "A"');
+	// Action threw before state change → state unchanged
+	assertEquals(fsm.state, "A");
+});
+
+Deno.test("v3: matches() helper", () => {
+	const fsm = new FSM<"A" | "B" | "C", "go">({
+		initial: "A",
+		states: {
+			A: { on: { go: "B" } },
+			B: { on: { go: "C" } },
+			C: { on: {} },
+		},
+	});
+
+	assertEquals(fsm.matches("A"), true);
+	assertEquals(fsm.matches("A", "B"), true);
+	assertEquals(fsm.matches("B", "C"), false);
+});
+
+Deno.test("v3: cannot() helper", () => {
+	const fsm = new FSM<"A" | "B", "go" | "stop">({
+		initial: "A",
+		states: {
+			A: { on: { go: "B" } },
+			B: { on: {} },
+		},
+	});
+
+	assertEquals(fsm.cannot("stop"), true);
+	assertEquals(fsm.cannot("go"), false);
+});
+
+Deno.test("v3: getSnapshot() returns deep clone of context", () => {
+	type CTX = { nested: { count: number } };
+	const fsm = new FSM<"A", "go", CTX>({
+		initial: "A",
+		context: { nested: { count: 1 } },
+		states: { A: { on: { go: "A" } } },
+	});
+
+	const snap = fsm.getSnapshot();
+	assertEquals(snap.state, "A");
+	assertEquals(snap.previous, null);
+	assertEquals(snap.context.nested.count, 1);
+
+	// Mutating snapshot context must not affect FSM
+	snap.context.nested.count = 999;
+	assertEquals(fsm.context.nested.count, 1);
+});
+
+Deno.test("v3: previous getter exposes prior state", () => {
+	const fsm = new FSM<"A" | "B", "go">({
+		initial: "A",
+		states: {
+			A: { on: { go: "B" } },
+			B: { on: {} },
+		},
+	});
+
+	assertEquals(fsm.previous, null);
+	fsm.transition("go");
+	assertEquals(fsm.previous, "A");
+});
+
+Deno.test("v3: toMermaid renders [guarded] for unindexed single guard", () => {
+	const fsm = new FSM<"A" | "B", "go">({
+		initial: "A",
+		states: {
+			A: { on: { go: { target: "B", guard: () => true } } },
+			B: { on: {} },
+		},
+	});
+
+	const out = fsm.toMermaid();
+	assertEquals(out.includes("A --> B: go [guarded]"), true);
+	// No phantom "[guard -1]" anywhere
+	assertEquals(out.includes("[guard -1]"), false);
+});
+
+Deno.test("v3: toMermaid omits [guard N] for unguarded array entries", () => {
+	const fsm = new FSM<"A" | "B" | "C", "go">({
+		initial: "A",
+		states: {
+			A: {
+				on: {
+					go: [
+						{ target: "B", guard: () => false },
+						{ target: "C" }, // no guard
+					],
+				},
+			},
+			B: { on: {} },
+			C: { on: {} },
+		},
+	});
+
+	const out = fsm.toMermaid();
+	// First entry has guard → guard 1
+	assertEquals(out.includes("A --> B: go [guard 1]"), true);
+	// Second entry has no guard → no "[guard 2]"
+	assertEquals(out.includes("A --> C: go\n"), true);
+	assertEquals(out.includes("A --> C: go [guard 2]"), false);
+});
+
 Deno.test("custom logger with debug mode", () => {
 	type STATES = "IDLE" | "ACTIVE";
 	type TRANSITIONS = "start" | "stop";

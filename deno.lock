@@ -1,68 +1,69 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@marianmeres/batch@^1.1.0": "1.1.0",
-    "jsr:@marianmeres/clog@^3.10.0": "3.15.2",
-    "jsr:@marianmeres/clog@^3.15.2": "3.15.2",
-    "jsr:@marianmeres/npmbuild@^1.10.0": "1.10.0",
-    "jsr:@marianmeres/pubsub@^2.4.4": "2.4.6",
+    "jsr:@marianmeres/batch@^1.2.0": "1.2.0",
+    "jsr:@marianmeres/clog@^3.15.3": "3.17.0",
+    "jsr:@marianmeres/clog@^3.17.0": "3.17.0",
+    "jsr:@marianmeres/npmbuild@^1.12.0": "1.12.0",
+    "jsr:@marianmeres/pubsub@3": "3.0.0",
     "jsr:@marianmeres/pubsub@^2.4.6": "2.4.6",
-    "jsr:@std/assert@^1.0.18": "1.0.18",
-    "jsr:@std/cli@^1.0.27": "1.0.27",
-    "jsr:@std/collections@^1.1.3": "1.1.5",
-    "jsr:@std/collections@^1.1.5": "1.1.5",
+    "jsr:@std/assert@^1.0.19": "1.0.19",
+    "jsr:@std/cli@^1.0.28": "1.0.28",
+    "jsr:@std/collections@^1.1.6": "1.1.6",
     "jsr:@std/fmt@^1.0.9": "1.0.9",
-    "jsr:@std/fs@^1.0.21": "1.0.22",
-    "jsr:@std/fs@^1.0.22": "1.0.22",
+    "jsr:@std/fs@^1.0.23": "1.0.23",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@^1.1.4": "1.1.4"
   },
   "jsr": {
-    "@marianmeres/batch@1.1.0": {
-      "integrity": "0f85ed65327344b6b2d3ff195a2da4929ea351d9dd48e506cd79d3eb7140f394",
+    "@marianmeres/batch@1.2.0": {
+      "integrity": "7cafd9be55f1f0a1a9f7aaab205c7d2804d1a904bbcc33528e2fda74020d5ceb",
       "dependencies": [
-        "jsr:@marianmeres/clog@^3.10.0",
-        "jsr:@marianmeres/pubsub@^2.4.4"
+        "jsr:@marianmeres/clog@^3.15.3",
+        "jsr:@marianmeres/pubsub@^2.4.6"
       ]
     },
-    "@marianmeres/clog@3.15.2": {
-      "integrity": "c9f35639efed3aacf28d7f1a0c3b0cfb23420a6ece0e830742e56c3e87c48562",
+    "@marianmeres/clog@3.17.0": {
+      "integrity": "c8cc70dd07e7de851fc41f92563ddc4e55c10c34bc3b42351df5ed14908ac8cd",
       "dependencies": [
         "jsr:@marianmeres/batch"
       ]
     },
-    "@marianmeres/npmbuild@1.10.0": {
-      "integrity": "eb45240930dbdf7b870af50a99496adf2e98683e25d57c4a0864387760e05e69",
+    "@marianmeres/npmbuild@1.12.0": {
+      "integrity": "17561243fdd772580a3bcc46d79c37f2d99af4146d3261a716a4180560c12e6e",
       "dependencies": [
-        "jsr:@std/collections@^1.1.3",
-        "jsr:@std/fs@^1.0.21",
+        "jsr:@std/collections",
+        "jsr:@std/fs",
         "jsr:@std/path"
       ]
     },
     "@marianmeres/pubsub@2.4.6": {
       "integrity": "949fc1f5e39a84642f5943dccb94fe14c58bfffa48649e8401f3d0607a7f2159"
     },
-    "@std/assert@1.0.18": {
-      "integrity": "270245e9c2c13b446286de475131dc688ca9abcd94fc5db41d43a219b34d1c78",
+    "@marianmeres/pubsub@3.0.0": {
+      "integrity": "9bc40e60362801663fb23e0c00a353abec7684840b6bea410facba09c083677b"
+    },
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
       "dependencies": [
         "jsr:@std/internal"
       ]
     },
-    "@std/cli@1.0.27": {
-      "integrity": "eba97edd0891871a7410e835dd94b3c260c709cca5983df2689c25a71fbe04de",
+    "@std/cli@1.0.28": {
+      "integrity": "74ef9b976db59ca6b23a5283469c9072be6276853807a83ec6c7ce412135c70a",
       "dependencies": [
         "jsr:@std/fmt",
         "jsr:@std/internal"
       ]
     },
-    "@std/collections@1.1.5": {
-      "integrity": "c37cc6bbbbf90fec3e782535a46c9c8a3210f19118c61add71fcea86b0ffd491"
+    "@std/collections@1.1.6": {
+      "integrity": "b458160ce65ea5ad35da05d0a5cbee4b583677c8b443a10d7beb0c4ac63f2baa"
     },
     "@std/fmt@1.0.9": {
       "integrity": "2487343e8899fb2be5d0e3d35013e54477ada198854e52dd05ed0422eddcabe0"
     },
-    "@std/fs@1.0.22": {
-      "integrity": "de0f277a58a867147a8a01bc1b181d0dfa80bfddba8c9cf2bacd6747bcec9308",
+    "@std/fs@1.0.23": {
+      "integrity": "3ecbae4ce4fee03b180fa710caff36bb5adb66631c46a6460aaad49515565a37",
       "dependencies": [
         "jsr:@std/internal",
         "jsr:@std/path"
@@ -80,13 +81,13 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@marianmeres/clog@^3.15.2",
-      "jsr:@marianmeres/npmbuild@^1.10.0",
-      "jsr:@marianmeres/pubsub@^2.4.6",
-      "jsr:@std/assert@^1.0.18",
-      "jsr:@std/cli@^1.0.27",
-      "jsr:@std/collections@^1.1.5",
-      "jsr:@std/fs@^1.0.22",
+      "jsr:@marianmeres/clog@^3.17.0",
+      "jsr:@marianmeres/npmbuild@^1.12.0",
+      "jsr:@marianmeres/pubsub@3",
+      "jsr:@std/assert@^1.0.19",
+      "jsr:@std/cli@^1.0.28",
+      "jsr:@std/collections@^1.1.6",
+      "jsr:@std/fs@^1.0.23",
       "jsr:@std/path@^1.1.4"
     ]
   }

@@ -8,6 +8,7 @@
 - **Language**: TypeScript
 - **Paradigm**: Synchronous, reactive, type-safe
 - **Entry Point**: `src/mod.ts`
+- **Major version notes**: see [CHANGELOG.md](./CHANGELOG.md) for the v3 breaking-change list
 
 ## Architecture
 
@@ -77,7 +78,8 @@ tests/
 | `FSMStatesConfigValue` | type | Single state configuration type |
 | `TransitionDef` | type | Transition definition union type |
 | `TransitionObj` | type | Transition object with target/guard/action |
-| `PublishedState` | type | Subscriber callback data type |
+| `PublishedState` | type | Subscriber callback data: `{ current, previous, context }` |
+| `FSMSnapshot` | type | Return shape of `getSnapshot()` (deep-cloned context) |
 | `FSMPayload` | type | Transition payload type (unknown) |
 | `FSMConfigFragment` | type | Partial config for composition |
 | `ComposeFsmConfigOptions` | type | Options for composeFsmConfig |
@@ -87,33 +89,51 @@ tests/
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `constructor` | `(config: FSMConfig) => FSM` | Create FSM instance |
+| `constructor` | `(config: FSMConfig) => FSM` | Create FSM instance; validates `initial` and transition targets; deep-freezes config |
 | `state` | `get state(): TState` | Get current state (non-reactive) |
-| `context` | `TContext` | Mutable context object |
-| `config` | `readonly FSMConfig` | Original configuration |
+| `previous` | `get previous(): TState \| null` | Get prior state, or `null` if none |
+| `context` | `TContext` | Mutable context object (deep-cloned from config on init/reset) |
+| `config` | `readonly FSMConfig` | Original configuration (deep-frozen) |
 | `logger` | `get logger(): Logger` | Get logger instance |
-| `subscribe` | `(cb) => Unsubscriber` | Subscribe to state changes |
-| `transition` | `(event, payload?, assert?) => TState \| null` | Execute transition |
-| `canTransition` | `(event, payload?) => boolean` | Check if transition is valid |
+| `subscribe` | `(cb) => Unsubscriber` | Subscribe to state changes; fires immediately with current snapshot |
+| `transition` | `(event, payload?, assert?) => TState \| null` | Execute transition; returns `null` on failure when `assert=false` |
+| `canTransition` | `(event, payload?) => boolean` | Check if transition is valid (specific → wildcard fallback) |
+| `cannot` | `(event, payload?) => boolean` | Inverse of `canTransition` |
 | `is` | `(state) => boolean` | Check current state |
-| `reset` | `() => FSM` | Reset to initial state |
+| `matches` | `(...states) => boolean` | True if FSM is in any of the given states |
+| `getSnapshot` | `() => FSMSnapshot` | Return `{ state, previous, context }` with deep-cloned context |
+| `reset` | `() => FSM` | Reset to initial state; runs `onExit` on current and `onEnter` on initial |
 | `toMermaid` | `() => string` | Generate Mermaid diagram |
 | `fromMermaid` | `static (diagram) => FSM` | Parse Mermaid to FSM |
 
 ## Transition Lifecycle
 
 ```
+RESOLUTION:
+  1. Try specific event handler
+  2. If absent OR all guards rejected → try wildcard "*" handler
+  3. If neither resolves → throw (assert=true) or return null (assert=false)
+
 EXTERNAL TRANSITION:
-  1. onExit(currentState)
-  2. action(transition)
-  3. state = newState
-  4. onEnter(newState)
-  5. notify subscribers
+  1. onExit(currentState)               (errors propagate; no state change)
+  2. action(transition)                 (errors propagate; no state change)
+  3. state = newState                   (commit point)
+  4. onEnter(newState)                  (errors propagate after notify)
+  5. notify subscribers                 (always runs in finally)
 
 INTERNAL TRANSITION (no target):
-  1. action(transition)
+  1. action(transition)                 (errors propagate; no notify)
   2. notify subscribers
+
+RESET:
+  1. onExit(currentState)
+  2. state = initial; context = freshContext()
+  3. onEnter(initial)                   (errors propagate after notify)
+  4. notify subscribers
 ```
+
+Hook errors are wrapped with `FSM: <hook> for "<event>" in state "<state>" threw: ...`.
+The original error is preserved as the wrapped error's `cause`.
 
 ## Context Best Practices
 
@@ -201,8 +221,14 @@ FSM<TState, TEvent, TContext>
 
 ## Error Handling
 
+- Constructor throws if `initial` is not in `states` or any transition target is unknown
 - `transition()` throws on invalid transitions when `assert=true` (default)
-- `transition()` returns current state when `assert=false`
+- `transition()` returns `null` when `assert=false` and the transition fails (v3 change)
+- Hook / guard / action errors are wrapped with diagnostic context (state, event,
+  hook name) and the original error is preserved as `cause`. Hook errors propagate
+  regardless of `assert`.
+- If `onEnter` throws, state has already changed and subscribers are notified before
+  the error propagates (subscribers never observe a desynced state).
 - `fromMermaid()` throws on invalid diagram format
 - Guards evaluated against cloned context (safe from mutation)
 
@@ -330,10 +356,12 @@ const config = composeFsmConfig([
 
 **Composition Rules:**
 - Falsy values in array are filtered out (enables conditional fragments)
-- `initial`: Last fragment wins (or error with `onConflict: "error"`)
-- `context`: Shallow-merged by default (or replaced with `context: "replace"`)
+- `initial`: Last fragment wins (or error with `onInitialConflict: "error"`)
+- `context`: Shallow-merged by default; each fragment is deep-cloned before merge
+  (or replaced with `context: "replace"`)
 - `states.X.on`: Replaced by default, or merged with `transitions: "prepend"` / `"append"`
-- `onEnter`/`onExit`: Replaced by default, or chained with `hooks: "compose"`
+- `onEnter`/`onExit`: Replaced by default, or chained with `hooks: "compose"` (mutations
+  visible across hooks, fragment order)
 
 **Transition Merge Modes:**
 - `"replace"` (default): Later fragments override earlier transition handlers

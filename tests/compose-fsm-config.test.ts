@@ -169,7 +169,7 @@ Deno.test("hooks compose mode", () => {
 	assertEquals(fsm.context.log, ["f1-exit", "f2-exit", "f1-enter", "f2-enter"]);
 });
 
-Deno.test("onConflict error mode", () => {
+Deno.test("onInitialConflict error mode", () => {
 	type STATES = "A" | "B";
 	type TRANSITIONS = "go";
 
@@ -184,13 +184,13 @@ Deno.test("onConflict error mode", () => {
 	};
 
 	assertThrows(
-		() => composeFsmConfig([f1, f2], { onConflict: "error" }),
+		() => composeFsmConfig([f1, f2], { onInitialConflict: "error" }),
 		Error,
 		"Conflict: multiple fragments define different 'initial' values"
 	);
 });
 
-Deno.test("onConflict last-wins mode (default)", () => {
+Deno.test("onInitialConflict last-wins mode (default)", () => {
 	type STATES = "A" | "B";
 	type TRANSITIONS = "go";
 
@@ -539,6 +539,49 @@ Deno.test("transitions replace mode (default) unchanged", () => {
 
 	fsm.transition("go");
 	assertEquals(fsm.state, "C"); // f2 replaced f1
+});
+
+Deno.test("v3: context merge mode deep-clones nested objects", () => {
+	type CTX = { nested: { count: number }; flag: boolean };
+
+	const f1: FSMConfigFragment<"A", "go", CTX> = {
+		initial: "A",
+		context: { nested: { count: 1 }, flag: true } as CTX,
+		states: { A: { on: { go: "A" } } },
+	};
+
+	const config = composeFsmConfig([f1]);
+	const fsm = createFsm(config);
+
+	fsm.context.nested.count = 999;
+	fsm.reset();
+
+	// Reset must restore nested defaults — confirms merge mode deep-clones
+	assertEquals(fsm.context.nested.count, 1);
+});
+
+Deno.test("v3: context replace mode is also reset-safe", () => {
+	type CTX = { nested: { count: number } };
+
+	const f1: FSMConfigFragment<"A", "go", CTX> = {
+		initial: "A",
+		context: { nested: { count: 0 } },
+		states: { A: { on: { go: "A" } } },
+	};
+
+	const f2: FSMConfigFragment<"A", "go", CTX> = {
+		context: { nested: { count: 42 } },
+		states: {},
+	};
+
+	const config = composeFsmConfig([f1, f2], { context: "replace" });
+	const fsm = createFsm(config);
+
+	fsm.context.nested.count = 999;
+	fsm.reset();
+
+	// FSM deep-clones plain-object context on init/reset
+	assertEquals(fsm.context.nested.count, 42);
 });
 
 Deno.test("transitions prepend with string and object mix", () => {

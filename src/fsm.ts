@@ -40,7 +40,7 @@ export type FSMStatesConfigMap<
 > = Record<TState, FSMStatesConfigValue<TState, TEvent, TContext>>;
 
 /**
- * Constructor configuration
+ * Constructor configuration.
  *
  * Note on Context Design:
  * Context should be a plain data object without functions. This ensures:
@@ -65,7 +65,7 @@ export type FSMConfig<
 };
 
 /**
- * Transition configuration object
+ * Transition configuration object.
  *
  * IMPORTANT - Context Design Philosophy:
  * The context parameter should be treated as READ-ONLY in guard functions and should
@@ -76,19 +76,18 @@ export type FSMConfig<
  * - Behavior is predictable and testable
  *
  * Good practice:
- *   guard: (ctx) => ctx.attempts < ctx.maxRetries  // ✅ Read-only check
+ *   guard: (ctx) => ctx.attempts < ctx.maxRetries  // read-only check
  *
  * Bad practice:
- *   guard: (ctx) => { ctx.attempts++; return true }  // ❌ Mutating in guard
- *   context: { count: 0, increment: () => {} }       // ❌ Functions in context
+ *   guard: (ctx) => { ctx.attempts++; return true }  // mutating in guard
+ *   context: { count: 0, increment: () => {} }       // functions in context
  *
  * For mutations, use action hooks (action, onEnter, onExit) which are designed
- * for side effects. For helper functions, define them outside the FSM and pass
- * context as parameters.
+ * for side effects.
  */
 export type TransitionObj<TState, TContext> = {
-	// target is optional... if undefined, the transition will be considered as "internal"
-	// and in such case only the action will re-run
+	// target is optional... if undefined, the transition is "internal"
+	// and only the action will run (no onExit/onEnter, no state change)
 	target?: TState;
 	/**
 	 * Guard function to conditionally allow a transition.
@@ -118,13 +117,27 @@ export type TransitionDef<TState, TContext> =
 
 /**
  * Published state data sent to subscribers.
- * Contains the current state, previous state (null if initial), and context.
+ * Contains the current state, previous state (null if initial), and live context reference.
  *
  * @template TState - Union type of all possible state names
+ * @template TContext - Type of the FSM context object
  */
-export type PublishedState<TState> = {
+export type PublishedState<TState, TContext = unknown> = {
 	current: TState;
 	previous: TState | null;
+	context: TContext;
+};
+
+/**
+ * Snapshot of FSM state, suitable for testing, persistence, or time-travel.
+ *
+ * @template TState - Union type of all possible state names
+ * @template TContext - Type of the FSM context object
+ */
+export type FSMSnapshot<TState, TContext> = {
+	state: TState;
+	previous: TState | null;
+	context: TContext;
 };
 
 /**
@@ -156,6 +169,34 @@ export function createFsm<
 	return new FSM<TState, TEvent, TContext>(config);
 }
 
+/** Recursively freezes plain objects/arrays. Skips functions to avoid surprising side effects. */
+function deepFreeze<T>(obj: T): T {
+	if (obj === null || typeof obj !== "object") return obj;
+	if (Object.isFrozen(obj)) return obj;
+	Object.freeze(obj);
+	for (const key of Object.keys(obj as object)) {
+		const value = (obj as Record<string, unknown>)[key];
+		if (value !== null && typeof value === "object") {
+			deepFreeze(value);
+		}
+	}
+	return obj;
+}
+
+/** Collects target states referenced by a transition definition. */
+function collectTargets<TState extends string, TContext>(
+	def: TransitionDef<TState, TContext>
+): TState[] {
+	if (typeof def === "string") return [def];
+	if (Array.isArray(def)) {
+		return def.flatMap((t) =>
+			t.target !== undefined ? [t.target] : []
+		);
+	}
+	const obj = def as TransitionObj<TState, TContext>;
+	return obj.target !== undefined ? [obj.target] : [];
+}
+
 /**
  * A lightweight, typed, framework-agnostic Finite State Machine.
  *
@@ -164,7 +205,7 @@ export function createFsm<
  * and lifecycle hooks (onEnter/onExit), but contains no business logic by design.
  *
  * **Transition types:**
- * - **External transitions** (with target): Execute full lifecycle (onExit → action → onEnter → notify)
+ * - **External transitions** (with target): Execute full lifecycle (onExit → action → state change → onEnter → notify)
  * - **Internal transitions** (no target): Execute only action → notify, without onExit/onEnter
  * - **Self-loop transitions** (target === current): Execute full lifecycle; useful for retry/refresh patterns
  *
@@ -217,12 +258,24 @@ export class FSM<
 
 	/**
 	 * Creates a new FSM instance.
+	 *
+	 * The configuration is validated at construction time:
+	 * - `initial` must reference a state defined in `states`
+	 * - All transition targets must reference states defined in `states`
+	 *
+	 * The configuration object is deep-frozen after construction to prevent accidental
+	 * mutation. User-supplied functions are not frozen.
+	 *
 	 * @param config - The FSM configuration containing initial state, states definition, and optional context
+	 * @throws Error if the configuration is invalid
 	 */
 	constructor(public readonly config: FSMConfig<TState, TEvent, TContext>) {
 		this.#logger = withNamespace(config.logger ?? createClog(), "FSM");
+		this.#validateConfig(config);
 		this.#state = this.config.initial;
 		this.context = this.#initContext();
+		// freeze last so validation errors carry the original message untouched
+		deepFreeze(this.config);
 		this.#logger.debug(`FSM created with initial state "${this.#state}"`);
 	}
 
@@ -243,16 +296,65 @@ export class FSM<
 		return this.#state;
 	}
 
-	/** Helper to initialize context from object or factory function */
+	/**
+	 * Returns the previous state of the FSM, or `null` if no transition has occurred yet.
+	 * @returns The previous state name, or `null`
+	 */
+	get previous(): TState | null {
+		return this.#previous;
+	}
+
+	#validateConfig(config: FSMConfig<TState, TEvent, TContext>) {
+		if (!config || typeof config !== "object") {
+			throw new Error("FSM: config must be an object");
+		}
+		if (typeof config.initial !== "string") {
+			throw new Error("FSM: config.initial must be a string");
+		}
+		if (!config.states || typeof config.states !== "object") {
+			throw new Error("FSM: config.states must be an object");
+		}
+		if (!(config.initial in config.states)) {
+			throw new Error(
+				`FSM: initial state "${config.initial}" is not defined in states`
+			);
+		}
+		for (const [stateName, stateConfig] of Object.entries(config.states)) {
+			if (!stateConfig || typeof stateConfig !== "object") {
+				throw new Error(`FSM: state "${stateName}" must be an object`);
+			}
+			const sc = stateConfig as FSMStatesConfigValue<TState, TEvent, TContext>;
+			if (!sc.on || typeof sc.on !== "object") {
+				throw new Error(`FSM: state "${stateName}" is missing "on" map`);
+			}
+			for (const [event, def] of Object.entries(sc.on)) {
+				if (def === undefined) continue;
+				const targets = collectTargets(
+					def as TransitionDef<TState, TContext>
+				);
+				for (const target of targets) {
+					if (!(target in config.states)) {
+						throw new Error(
+							`FSM: transition "${event}" in state "${stateName}" targets unknown state "${target}"`
+						);
+					}
+				}
+			}
+		}
+	}
+
+	/** Helper to initialize context from object or factory function. */
 	#initContext(): TContext {
 		if (typeof this.config.context === "function") {
 			return (this.config.context as () => TContext)();
 		}
-		// fallback to shallow copy if a static object is passed
-		return { ...(this.config.context ?? ({} as TContext)) };
+		if (this.config.context === undefined) return {} as TContext;
+		// Deep-clone plain object context so mutations on this.context never leak
+		// back to config.context, and reset() truly produces a fresh tree.
+		return structuredClone(this.config.context);
 	}
 
-	#getNotifyData() {
+	#getNotifyData(): PublishedState<TState, TContext> {
 		return {
 			current: this.#state,
 			previous: this.#previous,
@@ -294,7 +396,7 @@ export class FSM<
 	 * ```
 	 */
 	subscribe(
-		cb: (data: PublishedState<TState> & { context: TContext }) => void
+		cb: (data: PublishedState<TState, TContext>) => void
 	): Unsubscriber {
 		this.#logger.debug("New subscription registered.");
 		const unsub = this.#pubsub.subscribe("change", cb);
@@ -302,10 +404,52 @@ export class FSM<
 		return unsub;
 	}
 
+	#wrapHookError(
+		fn: () => void,
+		hookName: string,
+		event: string,
+		state: string
+	) {
+		try {
+			fn();
+		} catch (e) {
+			throw new Error(
+				`FSM: ${hookName} for "${event}" in state "${state}" threw: ${
+					e instanceof Error ? e.message : String(e)
+				}`,
+				{ cause: e }
+			);
+		}
+	}
+
+	#invokeGuard(
+		guard: (ctx: Readonly<TContext>, payload?: FSMPayload) => boolean,
+		ctx: Readonly<TContext>,
+		payload: FSMPayload | undefined,
+		event: string,
+		state: string
+	): boolean {
+		try {
+			return guard(ctx, payload);
+		} catch (e) {
+			throw new Error(
+				`FSM: guard for "${event}" in state "${state}" threw: ${
+					e instanceof Error ? e.message : String(e)
+				}`,
+				{ cause: e }
+			);
+		}
+	}
+
 	/**
 	 * Requests the FSM to transition based on the given event.
 	 *
-	 * Execution order during external transitions:
+	 * **Resolution order:**
+	 * 1. Try the specific event handler. If it resolves to a valid transition, use it.
+	 * 2. Otherwise (no specific handler, or all its guards rejected), try the wildcard `"*"` handler.
+	 * 3. If neither resolves, throw (when `assert` is true) or return `null`.
+	 *
+	 * **Execution order during external transitions:**
 	 * 1. `onExit` hook of the current state
 	 * 2. `action` of the transition edge
 	 * 3. State changes (previous/current updated)
@@ -314,23 +458,31 @@ export class FSM<
 	 *
 	 * For internal transitions (no target defined), only the action runs and subscribers are notified.
 	 *
+	 * **Error handling:**
+	 * - Errors thrown by `onExit`, `action`, guards, or `onEnter` propagate to the caller, wrapped
+	 *   with the originating event/state for diagnostics (original error preserved as `cause`).
+	 * - If `onExit` or `action` throws, no state change happens.
+	 * - If `onEnter` throws, the state has already changed; subscribers are still notified
+	 *   (in a `finally` block) before the error propagates.
+	 *
 	 * **Self-loop transitions:** When the target state equals the current state, the full transition
 	 * lifecycle still executes (onExit, action, onEnter, notify). This is intentional — self-loops
 	 * are valid FSM semantics for scenarios like retry logic, refresh, or re-initialization.
-	 * However, be cautious when calling `transition()` from within a subscriber callback, as
-	 * self-loops can cause infinite loops. See `subscribe()` documentation for prevention patterns.
+	 * Be cautious when calling `transition()` from within a subscriber callback to avoid infinite
+	 * loops. See `subscribe()` documentation for prevention patterns.
 	 *
 	 * @param event - The transition event name
 	 * @param payload - Optional data passed to guards, actions, and lifecycle hooks
-	 * @param assert - If true (default), throws on invalid transitions; if false, returns current state
-	 * @returns The new state after transition, or current state if transition failed in non-assert mode
+	 * @param assert - If true (default), throws on invalid transitions; if false, returns `null`
+	 * @returns The new state after transition, or `null` if transition failed in non-assert mode
 	 * @throws Error if the transition is invalid and assert is true
 	 *
 	 * @example
 	 * ```typescript
-	 * fsm.transition("fetch");           // Basic transition
-	 * fsm.transition("resolve", data);   // With payload
-	 * fsm.transition("invalid", null, false); // Non-throwing mode
+	 * fsm.transition("fetch");                      // Basic transition
+	 * fsm.transition("resolve", data);              // With payload
+	 * const result = fsm.transition("invalid", null, false);
+	 * if (result === null) { ... }                  // Failed
 	 * ```
 	 */
 	transition(
@@ -343,61 +495,69 @@ export class FSM<
 		);
 		const currentStateConfig = this.config.states[this.#state];
 
+		// Constructor validation guarantees state exists; defensive check for safety
 		if (!currentStateConfig || !currentStateConfig.on) {
 			throw new Error(`No transitions defined for state "${this.#state}"`);
 		}
 
-		// Try the specific event first, then fall back to wildcard "*"
-		let transitionDef = currentStateConfig.on[event];
+		// 1. Try specific event handler first
+		let activeTransition: TransitionObj<TState, TContext> | null = null;
 		let usedWildcard = false;
 
-		if (!transitionDef) {
-			// Try wildcard transition as fallback
-			transitionDef = currentStateConfig.on["*" as TEvent];
-			usedWildcard = !!transitionDef;
+		const specificDef = currentStateConfig.on[event];
+		if (specificDef !== undefined) {
+			activeTransition = this.#resolveTransition(
+				specificDef,
+				event,
+				payload
+			);
+		}
 
-			if (!transitionDef) {
-				this.#logger.debug(
-					`Transition on '${event}' failed: no matching handler found.`
+		// 2. Fall back to wildcard if specific has no handler OR specific's guards all failed
+		if (activeTransition === null) {
+			const wildcardDef = currentStateConfig.on["*" as TEvent];
+			if (wildcardDef !== undefined) {
+				activeTransition = this.#resolveTransition(
+					wildcardDef,
+					event,
+					payload
 				);
-				if (assert) {
-					// prettier-ignore
-					throw new Error(`Invalid transition "${event}" from state "${this.#state}"`);
-				} else {
-					// just return current if non-assert mode
-					return this.#state;
-				}
+				usedWildcard = activeTransition !== null;
 			}
+		}
+
+		if (activeTransition === null) {
+			this.#logger.debug(
+				`Transition on '${event}' failed: no matching handler.`
+			);
+			if (assert) {
+				throw new Error(
+					`Invalid transition "${event}" from state "${this.#state}"`
+				);
+			}
+			return null;
 		}
 
 		if (usedWildcard) {
 			this.#logger.debug(`Using wildcard handler for '${event}' event.`);
 		}
 
-		// returns the full normalized transition object
-		const activeTransition = this.#resolveTransition(transitionDef, payload);
-
-		if (!activeTransition) {
-			this.#logger.debug(`Transition on '${event}' rejected by guard.`);
-			if (assert) {
-				// prettier-ignore
-				throw new Error(`No valid transition found for event "${event}" in state "${this.#state}"`);
-			} else {
-				// just return current if non-assert mode
-				return this.#state;
-			}
-		}
-
 		// INTERNAL TRANSITION
 		// if there is no target, we stay in the same state and ONLY run the action.
-		if (!activeTransition.target) {
+		if (activeTransition.target === undefined) {
 			this.#logger.debug(`Processing '${event}' as internal transition.`);
 			if (typeof activeTransition.action === "function") {
 				this.#logger.debug(`Executing action for '${event}' transition.`);
-				activeTransition.action(this.context, payload);
+				const action = activeTransition.action;
+				const stateName = this.#state;
+				this.#wrapHookError(
+					() => action(this.context, payload),
+					"action",
+					event,
+					stateName
+				);
 			}
-			// here we do NOT fire onExit, onEnter, or update this.#previous, BUT we
-			// notify consumers, since actions may change context
+			// Notify even for internal transitions: actions may have changed context
 			this.#notify();
 			return this.#state;
 		}
@@ -407,46 +567,67 @@ export class FSM<
 			`Transitioning from '${this.#state}' to '${nextState}' on '${event}'.`
 		);
 
-		// 1. exit current state side-effect
+		// 1. exit current state side-effect (errors propagate, no state change)
 		if (typeof currentStateConfig.onExit === "function") {
-			this.#logger.debug(
-				`Executing onExit hook for '${this.#state}' state.`
+			this.#logger.debug(`Executing onExit hook for '${this.#state}' state.`);
+			const onExit = currentStateConfig.onExit;
+			const stateName = this.#state;
+			this.#wrapHookError(
+				() => onExit(this.context, payload),
+				"onExit",
+				event,
+				stateName
 			);
-			currentStateConfig.onExit(this.context, payload);
 		}
 
-		// 2. execute transition action (if defined)
+		// 2. execute transition action (errors propagate, no state change)
 		if (typeof activeTransition.action === "function") {
 			this.#logger.debug(`Executing action for '${event}' transition.`);
-			activeTransition.action(this.context, payload);
+			const action = activeTransition.action;
+			const stateName = this.#state;
+			this.#wrapHookError(
+				() => action(this.context, payload),
+				"action",
+				event,
+				stateName
+			);
 		}
 
-		// 3. save previous and set new state
+		// 3. commit state change
 		this.#previous = this.#state;
 		this.#state = nextState;
 
-		// 4. enter new state side-effect
+		// 4. enter new state side-effect — always notify (in finally) even if onEnter throws
 		const nextStateConfig = this.config.states[nextState];
-		if (typeof nextStateConfig.onEnter === "function") {
-			this.#logger.debug(
-				`Executing onEnter hook for '${nextState}' state.`
-			);
-			nextStateConfig.onEnter(this.context, payload);
+		try {
+			if (typeof nextStateConfig.onEnter === "function") {
+				this.#logger.debug(
+					`Executing onEnter hook for '${nextState}' state.`
+				);
+				const onEnter = nextStateConfig.onEnter;
+				this.#wrapHookError(
+					() => onEnter(this.context, payload),
+					"onEnter",
+					event,
+					nextState
+				);
+			}
+		} finally {
+			// 5. notify listeners — even if onEnter threw, subscribers see the new state
+			this.#notify();
 		}
 
-		// 5. notify listeners
-		this.#notify();
-
-		// return current
 		return this.#state;
 	}
 
 	/**
 	 * Resolves the transition definition into a normalized object.
 	 * Guards are evaluated against a cloned context to ensure they cannot mutate state.
+	 * Returns `null` if no transition resolves (e.g., all guards in an array rejected).
 	 */
 	#resolveTransition(
 		transition: TransitionDef<TState, TContext>,
+		event: string,
 		payload?: FSMPayload
 	): TransitionObj<TState, TContext> | null {
 		// simple string transition -> normalize to object
@@ -457,14 +638,25 @@ export class FSM<
 		// Clone context for guard evaluation to enforce purity
 		// Guards should never mutate context - mutations belong in actions/hooks
 		const clonedContext = structuredClone(this.context);
+		const stateName = this.#state;
 
 		// array of guarded transitions
 		if (Array.isArray(transition)) {
 			for (const t of transition) {
 				if (typeof t.guard === "function") {
-					if (t.guard(clonedContext, payload)) return t;
+					if (
+						this.#invokeGuard(
+							t.guard,
+							clonedContext,
+							payload,
+							event,
+							stateName
+						)
+					) {
+						return t;
+					}
 				} else {
-					// If no guard is present in an array item, it's an unconditional match
+					// Unconditional match (catch-all in array)
 					return t;
 				}
 			}
@@ -473,7 +665,15 @@ export class FSM<
 
 		// single guarded transition object
 		if (typeof transition.guard === "function") {
-			return transition.guard(clonedContext, payload) ? transition : null;
+			return this.#invokeGuard(
+				transition.guard,
+				clonedContext,
+				payload,
+				event,
+				stateName
+			)
+				? transition
+				: null;
 		}
 
 		// single object without guard
@@ -482,8 +682,17 @@ export class FSM<
 
 	/**
 	 * Resets the FSM to its initial state and re-initializes the context.
-	 * If context was defined as a factory function, a fresh context is created.
-	 * Subscribers are notified after reset.
+	 *
+	 * Lifecycle hooks fire as in any external transition: `onExit` of the current state,
+	 * then context is rebuilt, then `onEnter` of the initial state, then subscribers are notified.
+	 * If the current state IS the initial state, this is treated as a self-loop reset and still
+	 * runs both hooks.
+	 *
+	 * If context was defined as a factory function, a fresh context is created. If it was a
+	 * plain object, it is deep-cloned from the original config.
+	 *
+	 * Hooks receive `undefined` as payload. If a hook throws, the FSM is restored to its
+	 * pre-reset state and the error propagates.
 	 *
 	 * @returns The FSM instance for chaining
 	 *
@@ -493,11 +702,60 @@ export class FSM<
 	 * ```
 	 */
 	reset(): FSM<TState, TEvent, TContext> {
-		this.#logger.debug(`Resetting FSM to initial '${this.config.initial}' state.`);
-		this.#state = this.config.initial;
-		this.#previous = null;
-		this.context = this.#initContext();
-		this.#notify();
+		this.#logger.debug(
+			`Resetting FSM to initial '${this.config.initial}' state.`
+		);
+
+		const prevState = this.#state;
+		const prevPrevious = this.#previous;
+		const prevContext = this.context;
+
+		try {
+			// 1. exit current state
+			const currentStateConfig = this.config.states[prevState];
+			if (typeof currentStateConfig?.onExit === "function") {
+				const onExit = currentStateConfig.onExit;
+				this.#wrapHookError(
+					() => onExit(this.context, undefined),
+					"onExit",
+					"reset",
+					prevState
+				);
+			}
+
+			// 2. swap to initial + fresh context
+			this.#state = this.config.initial;
+			this.#previous = null;
+			this.context = this.#initContext();
+
+			// 3. enter initial state — notify in finally even if onEnter throws
+			const initialStateConfig = this.config.states[this.config.initial];
+			try {
+				if (typeof initialStateConfig?.onEnter === "function") {
+					const onEnter = initialStateConfig.onEnter;
+					this.#wrapHookError(
+						() => onEnter(this.context, undefined),
+						"onEnter",
+						"reset",
+						this.config.initial
+					);
+				}
+			} finally {
+				this.#notify();
+			}
+		} catch (e) {
+			// onExit failed before we mutated anything: restore for safety
+			if (this.#state === prevState && this.context === prevContext) {
+				// no-op, nothing changed
+			} else if (this.#state !== this.config.initial) {
+				// shouldn't happen, but be safe
+				this.#state = prevState;
+				this.#previous = prevPrevious;
+				this.context = prevContext;
+			}
+			throw e;
+		}
+
 		return this;
 	}
 
@@ -519,9 +777,50 @@ export class FSM<
 	}
 
 	/**
+	 * Checks whether the FSM is currently in any of the given states.
+	 *
+	 * @param states - One or more states to check against
+	 * @returns True if the FSM is in any of the specified states
+	 *
+	 * @example
+	 * ```typescript
+	 * if (fsm.matches("LOADING", "RETRYING")) {
+	 *   showSpinner();
+	 * }
+	 * ```
+	 */
+	matches(...states: TState[]): boolean {
+		return states.includes(this.#state);
+	}
+
+	/**
+	 * Returns an immutable-shaped snapshot of the current FSM state.
+	 * The returned object is a fresh structure, but `context` is a deep clone — mutating
+	 * it does not affect the FSM.
+	 *
+	 * @returns Snapshot containing `state`, `previous`, and a deep-cloned `context`
+	 *
+	 * @example
+	 * ```typescript
+	 * const snap = fsm.getSnapshot();
+	 * localStorage.setItem("fsm", JSON.stringify(snap));
+	 * ```
+	 */
+	getSnapshot(): FSMSnapshot<TState, TContext> {
+		return {
+			state: this.#state,
+			previous: this.#previous,
+			context: structuredClone(this.context),
+		};
+	}
+
+	/**
 	 * Checks whether a transition is valid from the current state without executing it.
 	 * This is a pure query operation that does not modify FSM state.
 	 * Guards are evaluated against a cloned context to ensure they cannot mutate state.
+	 *
+	 * Resolution order matches `transition()`: specific event first, then wildcard fallback
+	 * (used when the specific handler is missing OR all its guards reject).
 	 *
 	 * @param event - The transition event name to check
 	 * @param payload - Optional payload for guard evaluation
@@ -549,27 +848,39 @@ export class FSM<
 			return false;
 		}
 
-		// Try the specific event first, then fall back to wildcard "*"
-		let transitionDef = currentStateConfig.on[event];
-
-		if (!transitionDef) {
-			// Try wildcard transition as fallback
-			transitionDef = currentStateConfig.on["*" as TEvent];
-
-			if (!transitionDef) {
-				this.#logger.debug(
-					`Cannot transition on '${event}': no matching handler found.`
-				);
-				return false;
+		// Try specific event first
+		const specificDef = currentStateConfig.on[event];
+		if (specificDef !== undefined) {
+			const resolved = this.#resolveTransition(specificDef, event, payload);
+			if (resolved !== null) {
+				this.#logger.debug(`Transition on '${event}' is allowed.`);
+				return true;
 			}
 		}
 
-		// Check if transition resolves to a valid target
-		const activeTransition = this.#resolveTransition(transitionDef, payload);
-		const result = activeTransition !== null;
-		this.#logger.debug(`Transition on '${event}' is ${result ? "allowed" : "denied"}.`);
+		// Fall back to wildcard
+		const wildcardDef = currentStateConfig.on["*" as TEvent];
+		if (wildcardDef !== undefined) {
+			const resolved = this.#resolveTransition(wildcardDef, event, payload);
+			if (resolved !== null) {
+				this.#logger.debug(`Transition on '${event}' is allowed (via wildcard).`);
+				return true;
+			}
+		}
 
-		return result;
+		this.#logger.debug(`Transition on '${event}' is denied.`);
+		return false;
+	}
+
+	/**
+	 * Inverse of `canTransition()` — returns `true` if the transition cannot fire.
+	 *
+	 * @param event - The transition event name to check
+	 * @param payload - Optional payload for guard evaluation
+	 * @returns `true` if the transition is NOT allowed
+	 */
+	cannot(event: TEvent, payload?: FSMPayload): boolean {
+		return !this.canTransition(event, payload);
 	}
 
 	/**
@@ -577,7 +888,7 @@ export class FSM<
 	 * This is a static factory method that wraps the standalone fromMermaid parser.
 	 *
 	 * Limitations:
-	 * - Cannot recreate actual guard/action functions (sets them to null as placeholders)
+	 * - Cannot recreate actual guard/action functions (sets them to placeholders that always pass)
 	 * - Cannot recreate onEnter/onExit hooks (not represented in Mermaid)
 	 * - Cannot infer context structure
 	 *
@@ -608,7 +919,8 @@ export class FSM<
 	 * Useful for visualizing the state machine graph.
 	 *
 	 * The output follows UML conventions:
-	 * - Guards are shown as `[guard N]` or `[guarded]`
+	 * - Indexed guards (array transitions) are shown as `[guard N]`
+	 * - Single unindexed guard is shown as `[guarded]`
 	 * - Actions are shown as `/ (action)` or `/ (action internal)` for internal transitions
 	 * - Wildcards are shown as `* (any)`
 	 *
@@ -627,54 +939,60 @@ export class FSM<
 		let mermaid = "stateDiagram-v2\n";
 		mermaid += `    [*] --> ${this.config.initial}\n`;
 
+		// Helper to format the label: "Event [Guard] / Action"
+		// guardIdx semantics:
+		//   null   → no guard
+		//   -1     → guarded (single, unindexed)
+		//   1..N   → indexed (array entry N)
+		const formatLabel = (
+			evt: string,
+			guardIdx: number | null,
+			hasAction: boolean,
+			isInternal: boolean
+		) => {
+			let label = evt === "*" ? "* (any)" : evt;
+			if (guardIdx === -1) label += ` [guarded]`;
+			else if (guardIdx !== null) label += ` [guard ${guardIdx}]`;
+
+			if (hasAction) {
+				label += isInternal ? ` / (action internal)` : ` / (action)`;
+			}
+			return label;
+		};
+
 		for (const [stateName, stateConfig] of Object.entries(this.config.states)) {
-			// @ts-expect-error - Object.entries loses type info, but we know the structure
-			for (const [event, _def] of Object.entries(stateConfig?.on ?? {})) {
-				const def = _def as TransitionDef<TState, TContext>;
-				// Helper to format the label: "Event [Guard] / Action"
-				const formatLabel = (
-					evt: string,
-					guardIdx: number | null,
-					hasAction: boolean,
-					isInternal: boolean
-				) => {
-					// Make wildcard more descriptive in the diagram
-					let label = evt === "*" ? "* (any)" : evt;
-					if (guardIdx !== null) label += ` [guard ${guardIdx}]`;
-					else if (guardIdx === -1) label += ` [guarded]`;
+			const sc = stateConfig as FSMStatesConfigValue<
+				TState,
+				TEvent,
+				TContext
+			>;
+			for (const [event, def] of Object.entries(sc.on ?? {})) {
+				if (def === undefined) continue;
+				const transitionDef = def as TransitionDef<TState, TContext>;
 
-					// UML convention: Event [Guard] / Action
-					if (hasAction) {
-						if (isInternal) {
-							// mark internal transitions explicitly
-							label += ` / (action internal)`;
-						} else {
-							label += ` / (action)`;
-						}
-					}
-
-					return label;
-				};
-
-				if (typeof def === "string") {
-					// simple string: "TARGET"
+				if (typeof transitionDef === "string") {
 					const label = event === "*" ? "* (any)" : event;
-					mermaid += `    ${stateName} --> ${def}: ${label}\n`;
-				} else if (Array.isArray(def)) {
-					// array of objects
-					def.forEach((t, idx) => {
+					mermaid += `    ${stateName} --> ${transitionDef}: ${label}\n`;
+				} else if (Array.isArray(transitionDef)) {
+					transitionDef.forEach((t, idx) => {
 						const target = t.target ?? stateName;
-						const label = formatLabel(event, idx + 1, !!t.action, !t.target);
+						// Only emit a guard label for entries that actually have a guard
+						const guardIdx = t.guard ? idx + 1 : null;
+						const label = formatLabel(
+							event,
+							guardIdx,
+							!!t.action,
+							t.target === undefined
+						);
 						mermaid += `    ${stateName} --> ${target}: ${label}\n`;
 					});
 				} else {
-					// single object
-					const target = def.target ?? stateName;
+					const target = transitionDef.target ?? stateName;
 					const label = formatLabel(
 						event,
-						def.guard ? -1 : null,
-						!!def.action,
-						!def.target
+						transitionDef.guard ? -1 : null,
+						!!transitionDef.action,
+						transitionDef.target === undefined
 					);
 					mermaid += `    ${stateName} --> ${target}: ${label}\n`;
 				}

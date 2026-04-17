@@ -77,11 +77,13 @@ export function toTypeScript(
 
 	for (const [stateName, stateConfig] of Object.entries(config.states)) {
 		const sc = stateConfig as { on: Record<string, unknown> };
-		out += `${indent}${indent}${stateName}: {\n`;
+		// Always quote state keys to safely handle reserved words and non-identifier names
+		out += `${indent}${indent}"${stateName}": {\n`;
 		out += `${indent}${indent}${indent}on: {\n`;
 
 		for (const [event, def] of Object.entries(sc.on)) {
-			const eventKey = event === "*" ? '"*"' : event;
+			// Always quote event keys for the same reason
+			const eventKey = `"${event}"`;
 			out += formatTransitionDef(eventKey, def, indent, 4);
 		}
 
@@ -399,6 +401,32 @@ export function fromMermaid<
 		}
 
 		states[stateName] = { on };
+	}
+
+	// Ensure every referenced state (including the initial state and pure leaf
+	// targets that never appear as a `from`) has an entry, so constructor
+	// validation passes and downstream consumers never get undefined state configs.
+	const ensureState = (name: string) => {
+		if (!states[name]) states[name] = { on: {} };
+	};
+	ensureState(initial);
+	for (const [, stateConfig] of Object.entries(states)) {
+		for (const [, def] of Object.entries(stateConfig.on)) {
+			if (typeof def === "string") {
+				ensureState(def);
+			} else if (Array.isArray(def)) {
+				for (const t of def as TransitionObj<TState, TContext>[]) {
+					if (t.target) ensureState(t.target as string);
+				}
+			} else if (
+				def &&
+				typeof def === "object" &&
+				"target" in def &&
+				(def as { target?: unknown }).target
+			) {
+				ensureState((def as { target: string }).target);
+			}
+		}
 	}
 
 	return {

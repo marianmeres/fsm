@@ -627,17 +627,17 @@ Deno.test("toTypeScript generates valid TypeScript code", () => {
 	);
 	assertEquals(tsCode.includes('initial: "IDLE"'), true);
 
-	// Check states
-	assertEquals(tsCode.includes("IDLE: {"), true);
-	assertEquals(tsCode.includes("LOADING: {"), true);
-	assertEquals(tsCode.includes("SUCCESS: {"), true);
-	assertEquals(tsCode.includes("ERROR: {"), true);
+	// State keys are always quoted (handles reserved words / non-identifier names safely)
+	assertEquals(tsCode.includes('"IDLE": {'), true);
+	assertEquals(tsCode.includes('"LOADING": {'), true);
+	assertEquals(tsCode.includes('"SUCCESS": {'), true);
+	assertEquals(tsCode.includes('"ERROR": {'), true);
 
-	// Check simple transition
-	assertEquals(tsCode.includes('fetch: "LOADING"'), true);
+	// Event keys are always quoted as well
+	assertEquals(tsCode.includes('"fetch": "LOADING"'), true);
 
 	// Check guarded array transitions
-	assertEquals(tsCode.includes("reject: ["), true);
+	assertEquals(tsCode.includes('"reject": ['), true);
 	assertEquals(tsCode.includes('target: "ERROR"'), true);
 	assertEquals(tsCode.includes("guard: (ctx) => true, // TODO:"), true);
 
@@ -687,7 +687,7 @@ Deno.test("toTypeScript handles internal transitions", () => {
 	const tsCode = toTypeScript(mermaid);
 
 	// Internal transition should have action but no target
-	assertEquals(tsCode.includes("volumeUp: {"), true);
+	assertEquals(tsCode.includes('"volumeUp": {'), true);
 	assertEquals(
 		tsCode.includes("action: (ctx) => { /* TODO: [ACTION: action] */ }"),
 		true

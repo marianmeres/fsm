@@ -20,6 +20,12 @@ deno add jsr:@marianmeres/fsm
 npm install @marianmeres/fsm
 ```
 
+> **Upgrading from v2?** See [CHANGELOG.md](CHANGELOG.md) for the full list of v3
+> breaking changes. Headline items: `transition(..., false)` returns `null` on
+> failure, `reset()` runs lifecycle hooks, wildcard `"*"` is now used as a fallback
+> when a specific event's guards reject, and `composeFsmConfig`'s `onConflict`
+> option was renamed to `onInitialConflict`.
+
 ## Example
 
 ```typescript
@@ -366,7 +372,14 @@ fsm.subscribe(({ current, previous }) => {
 
 ## Wildcard Transitions
 
-Use the wildcard `"*"` to define a fallback transition that catches any event not explicitly defined. Specific transitions always take priority over wildcards.
+Use the wildcard `"*"` to define a fallback transition. Specific transitions always
+take priority. The wildcard is consulted in two cases:
+
+1. The current state has no specific handler for the event.
+2. The current state has a specific handler but all its guards rejected.
+
+Case 2 makes wildcards work as a safety net: even when a specific transition's
+guards refuse, the wildcard can rescue the event.
 
 ```typescript
 const fsm = new FSM({
@@ -568,18 +581,22 @@ Understanding how fragments merge is important:
 
 ```typescript
 composeFsmConfig([...fragments], {
-    hooks: "replace" | "compose",        // default: "replace"
-    context: "merge" | "replace",        // default: "merge"
-    onConflict: "last-wins" | "error",   // default: "last-wins"
-    transitions: "replace" | "prepend" | "append"  // default: "replace"
+    hooks: "replace" | "compose",                // default: "replace"
+    context: "merge" | "replace",                // default: "merge"
+    onInitialConflict: "last-wins" | "error",    // default: "last-wins"
+    transitions: "replace" | "prepend" | "append" // default: "replace"
 });
 ```
 
 - **`hooks: "replace"`** (default): Later fragment's hooks override earlier ones
-- **`hooks: "compose"`**: All hooks run sequentially in fragment order
-- **`context: "merge"`** (default): Shallow-merge context from all fragments
+- **`hooks: "compose"`**: All hooks run sequentially in fragment order. Mutations
+  from earlier hooks are visible to later hooks (shared context reference).
+- **`context: "merge"`** (default): Shallow-merge context from all fragments. Each
+  fragment's context is deep-cloned before merging so reset produces a fresh tree.
 - **`context: "replace"`**: Later fragment's context completely overrides earlier
-- **`onConflict: "error"`**: Throws if multiple fragments define different `initial` values
+- **`onInitialConflict: "error"`**: Throws if multiple fragments define different
+  `initial` values. (Renamed from `onConflict` in v3 for clarity — this option only
+  governs `initial`; context, transitions, and hooks have their own knobs.)
 - **`transitions: "replace"`** (default): Later fragment's transitions override earlier ones
 - **`transitions: "prepend"`**: Later fragment's transitions are prepended (run first)
 - **`transitions: "append"`**: Later fragment's transitions are appended (run last)

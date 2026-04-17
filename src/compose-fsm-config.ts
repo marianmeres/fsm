@@ -32,35 +32,39 @@ export type ComposeFsmConfigOptions = {
 	 * define them for the same state.
 	 *
 	 * - 'replace': Later fragments override earlier ones (default)
-	 * - 'compose': Chain hooks - all hooks run in fragment order
+	 * - 'compose': Chain hooks - all hooks run in fragment order. Mutations made by
+	 *              an earlier hook are visible to later hooks (shared context reference).
+	 *              Note: this is fragment order, NOT the reversed order used by transitions:"prepend".
 	 */
 	hooks?: "replace" | "compose";
 
 	/**
 	 * How to handle context when multiple fragments define it.
 	 *
-	 * - 'merge': Shallow-merge context objects from all fragments (default)
-	 * - 'replace': Later fragments completely override earlier context
-	 *
-	 * When merging, if context is a factory function, it will be called
-	 * and its result merged. The final result is always wrapped in a
-	 * factory function for proper reset behavior.
+	 * - 'merge' (default): Shallow-merge context objects from all fragments. Each fragment's
+	 *                      context is deep-cloned before merging so the resulting factory
+	 *                      produces a fresh tree on every invocation (including reset()).
+	 *                      The result is wrapped in a factory function.
+	 * - 'replace': Later fragments completely override earlier context. The value is passed
+	 *              through unchanged; FSM still deep-clones plain-object context on init/reset.
 	 */
 	context?: "merge" | "replace";
 
 	/**
-	 * How to handle conflicts for singular values like `initial`.
+	 * How to handle conflicts when multiple fragments define different `initial` values.
+	 * Note: this option ONLY governs the `initial` field. Context, transitions, and hooks
+	 * have their own dedicated options.
 	 *
-	 * - 'last-wins': Later fragments override earlier ones (default)
-	 * - 'error': Throw an error if multiple fragments define the same value
+	 * - 'last-wins' (default): Later fragments override earlier `initial` values
+	 * - 'error': Throw an error if multiple fragments define different `initial` values
 	 */
-	onConflict?: "last-wins" | "error";
+	onInitialConflict?: "last-wins" | "error";
 
 	/**
 	 * How to merge transitions (on) when multiple fragments define
 	 * handlers for the same event on the same state.
 	 *
-	 * - 'replace': Later fragments override earlier handlers (default)
+	 * - 'replace' (default): Later fragments override earlier handlers
 	 * - 'prepend': Later fragment transitions are prepended (run first)
 	 * - 'append': Later fragment transitions are appended (run last)
 	 *
@@ -139,7 +143,7 @@ export function composeFsmConfig<
 	const {
 		hooks = "replace",
 		context: contextMode = "merge",
-		onConflict = "last-wins",
+		onInitialConflict = "last-wins",
 		transitions: transitionsMode = "replace",
 	} = options;
 
@@ -152,7 +156,6 @@ export function composeFsmConfig<
 		throw new Error("composeFsmConfig requires at least one valid fragment");
 	}
 
-	// Track values for conflict detection
 	let initial: TState | undefined;
 
 	// For context merging, we collect all context values/factories
@@ -174,7 +177,7 @@ export function composeFsmConfig<
 		// Handle initial
 		if (fragment.initial !== undefined) {
 			if (
-				onConflict === "error" &&
+				onInitialConflict === "error" &&
 				initial !== undefined &&
 				initial !== fragment.initial
 			) {
@@ -208,7 +211,6 @@ export function composeFsmConfig<
 				// Merge transitions (on)
 				if (config.on) {
 					if (transitionsMode === "replace") {
-						// Current behavior: later fragments replace
 						mergedStates[state]!.on = {
 							...mergedStates[state]!.on,
 							...config.on,
@@ -221,10 +223,8 @@ export function composeFsmConfig<
 							const existingDef = existingOn[event];
 
 							if (existingDef === undefined) {
-								// No existing handler, just set it
 								existingOn[event] = newDef;
 							} else {
-								// Merge as arrays
 								const existingArr = normalizeToArray<TState, TContext>(
 									existingDef
 								);
@@ -232,8 +232,8 @@ export function composeFsmConfig<
 
 								existingOn[event] =
 									transitionsMode === "prepend"
-										? [...newArr, ...existingArr] // new runs first
-										: [...existingArr, ...newArr]; // existing runs first
+										? [...newArr, ...existingArr]
+										: [...existingArr, ...newArr];
 							}
 						}
 					}
@@ -290,17 +290,17 @@ export function composeFsmConfig<
 	// Handle context based on mode
 	if (contextSources.length > 0) {
 		if (contextMode === "replace") {
-			// Last context wins
+			// Last context wins, passed through unchanged. FSM deep-clones on init/reset.
 			result.context = contextSources[contextSources.length - 1];
 		} else {
-			// Merge mode (default): create a factory that merges all contexts
+			// Merge mode (default): factory that produces a fresh deep-merged tree each time
 			result.context = () => {
 				let merged = {} as TContext;
 				for (const source of contextSources) {
 					const value =
 						typeof source === "function"
 							? (source as () => TContext)()
-							: source;
+							: structuredClone(source);
 					merged = { ...merged, ...value };
 				}
 				return merged;
@@ -313,6 +313,8 @@ export function composeFsmConfig<
 
 /**
  * Creates a single hook function that runs multiple hooks in sequence.
+ * Hooks execute in fragment order. All hooks share the same `context` reference,
+ * so mutations from earlier hooks are visible to later hooks.
  */
 function composeHooks<TContext>(hooks: HookFn<TContext>[]): HookFn<TContext> {
 	return (context: TContext, payload?: FSMPayload) => {
