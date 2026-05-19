@@ -1,5 +1,34 @@
 # Changelog
 
+## 3.1.0
+
+Two purely additive features — no breaking changes, no behavior changes for
+existing consumers.
+
+### New API
+
+- **`state.meta?: unknown`** — optional passthrough metadata slot on each state
+  config. The FSM never reads or interprets `meta`; it is preserved in the
+  (deep-frozen) config and surfaces through new accessors.
+- **`getStateMeta<T>(state): T | undefined`** / **`getCurrentMeta<T>(): T | undefined`**
+  — read accessors for `meta`. Useful for layers above the FSM that need to
+  attach domain semantics to states (e.g. node kinds, handler ids).
+- **`FSM.fromSnapshot(config, snapshot)`** — static factory that constructs an
+  FSM pre-positioned at a previously captured snapshot. Intended for durable /
+  long-lived FSM instances that resume after process restart. Skips `onEnter`
+  for the restored state (a snapshot is not entry), preserves `previous`, and
+  validates `snapshot.state` and `snapshot.previous` against `config.states`
+  with constructor-parity error messages. Round-trip property:
+  `FSM.fromSnapshot(cfg, fsm.getSnapshot()).getSnapshot()` deep-equals
+  `fsm.getSnapshot()`.
+
+### composeFsmConfig
+
+- `meta` is now propagated through composition with last-write-wins semantics
+  (symmetric with how `onEnter`/`onExit` are handled in the default `replace`
+  hooks mode). Fragments that omit `meta` do not erase a prior fragment's
+  `meta`. Independent of the `transitions` mode.
+
 ## 3.0.0
 
 Major release with bug fixes, robustness improvements, and a few breaking changes.

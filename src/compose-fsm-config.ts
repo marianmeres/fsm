@@ -256,6 +256,12 @@ export function composeFsmConfig<
 						mergedStates[state]!.onExit = config.onExit;
 					}
 				}
+
+				// Preserve meta (last-write-wins). A fragment that omits meta
+				// does not erase a prior fragment's meta; only explicit values overwrite.
+				if (config.meta !== undefined) {
+					mergedStates[state]!.meta = config.meta;
+				}
 			}
 		}
 	}

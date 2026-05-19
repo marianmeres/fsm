@@ -24,6 +24,13 @@ export type FSMStatesConfigValue<
 	onEnter?: (context: TContext, payload?: FSMPayload) => void;
 	on: Partial<Record<TEvent | "*", TransitionDef<TState, TContext>>>;
 	onExit?: (context: TContext, payload?: FSMPayload) => void;
+	/**
+	 * Arbitrary user-defined metadata about this state.
+	 * The FSM never reads, interprets, or branches on this value — it is preserved
+	 * in the (deep-frozen) config and exposed via `getStateMeta()` / `getCurrentMeta()`
+	 * so consumers can attach domain semantics (e.g. node kinds, handler ids).
+	 */
+	meta?: unknown;
 };
 
 /**
@@ -815,6 +822,42 @@ export class FSM<
 	}
 
 	/**
+	 * Returns the `meta` value attached to the given state's config, or `undefined`
+	 * if the state has no meta or the state name is not in the config.
+	 *
+	 * The FSM never reads or interprets this value internally — it is a pure
+	 * passthrough for consumers (e.g. `@marianmeres/workflow`) that want to
+	 * attach domain semantics to states.
+	 *
+	 * @param state - The state name to look up
+	 * @returns The state's `meta`, typed as `T`, or `undefined`
+	 *
+	 * @example
+	 * ```typescript
+	 * const fsm = new FSM({
+	 *   initial: "IDLE",
+	 *   states: {
+	 *     IDLE: { meta: { kind: "decision" }, on: { go: "DONE" } },
+	 *     DONE: { meta: { kind: "terminal" }, on: {} },
+	 *   },
+	 * });
+	 * fsm.getStateMeta<{ kind: string }>("IDLE"); // { kind: "decision" }
+	 * ```
+	 */
+	getStateMeta<T = unknown>(state: TState): T | undefined {
+		return this.config.states[state]?.meta as T | undefined;
+	}
+
+	/**
+	 * Convenience accessor: returns `meta` for the current state.
+	 *
+	 * @returns The current state's `meta`, typed as `T`, or `undefined`
+	 */
+	getCurrentMeta<T = unknown>(): T | undefined {
+		return this.getStateMeta<T>(this.#state);
+	}
+
+	/**
 	 * Checks whether a transition is valid from the current state without executing it.
 	 * This is a pure query operation that does not modify FSM state.
 	 * Guards are evaluated against a cloned context to ensure they cannot mutate state.
@@ -912,6 +955,96 @@ export class FSM<
 	>(mermaidDiagram: string): FSM<TState, TEvent, TContext> {
 		const config = fromMermaidParser<TState, TEvent, TContext>(mermaidDiagram);
 		return new FSM<TState, TEvent, TContext>(config);
+	}
+
+	/**
+	 * Constructs an FSM pre-positioned at a previously captured snapshot.
+	 *
+	 * Intended for durable / long-lived FSM instances that need to resume after
+	 * a process restart. The snapshot's `state`, `previous`, and `context`
+	 * replace what `config.initial` and the context factory would otherwise
+	 * produce.
+	 *
+	 * Semantics:
+	 * - **No `onEnter` runs** for the restored state — the snapshot represents
+	 *   an already-entered state, so re-running `onEnter` would double-execute
+	 *   side effects. The `onEnter` of the restored state already fired in the
+	 *   process that wrote the snapshot.
+	 * - **Subscribers list starts empty** (snapshots don't carry subscribers).
+	 * - **Validation matches the constructor**: `snapshot.state` must exist in
+	 *   `config.states`, and `snapshot.previous` (when non-null) must also exist.
+	 * - **`context` is deep-cloned** so that mutating `snapshot.context` after
+	 *   the call does NOT mutate the FSM's context (parity with `getSnapshot()`
+	 *   and `#initContext`).
+	 *
+	 * Round-trip property: for any FSM `f`,
+	 * `FSM.fromSnapshot(f.config, f.getSnapshot()).getSnapshot()` is deep-equal
+	 * to `f.getSnapshot()`.
+	 *
+	 * @param config - The FSM configuration (validated identically to `new FSM(config)`)
+	 * @param snapshot - The previously captured snapshot to restore from
+	 * @returns A new FSM instance pre-positioned at `snapshot.state`
+	 * @throws Error if the configuration is invalid (constructor parity)
+	 * @throws Error if `snapshot.state` is not in `config.states`
+	 * @throws Error if `snapshot.previous` is non-null and not in `config.states`
+	 *
+	 * @example
+	 * ```typescript
+	 * // Persist
+	 * const snap = fsm.getSnapshot();
+	 * await db.save(id, snap);
+	 *
+	 * // ... process restart ...
+	 *
+	 * // Resume
+	 * const saved = await db.load(id);
+	 * const fsm = FSM.fromSnapshot(config, saved);
+	 * fsm.transition("next"); // continues exactly where it left off
+	 * ```
+	 */
+	static fromSnapshot<
+		TState extends string,
+		TEvent extends string,
+		TContext
+	>(
+		config: FSMConfig<TState, TEvent, TContext>,
+		snapshot: FSMSnapshot<TState, TContext>
+	): FSM<TState, TEvent, TContext> {
+		// Construct normally — this fully validates `config` and sets `#state`
+		// to `config.initial`. The constructor does NOT run any `onEnter`, so
+		// no hooks fire here.
+		const instance = new FSM<TState, TEvent, TContext>(config);
+
+		// Validate snapshot against the (now-frozen) config. Wording mirrors
+		// the constructor's `initial` error for consistency.
+		if (!(snapshot.state in config.states)) {
+			throw new Error(
+				`FSM: snapshot state "${snapshot.state}" is not defined in states`
+			);
+		}
+		if (
+			snapshot.previous !== null &&
+			!(snapshot.previous in config.states)
+		) {
+			throw new Error(
+				`FSM: snapshot previous "${snapshot.previous}" is not defined in states`
+			);
+		}
+
+		// Overwrite the fresh-construction values with the snapshot's. Private
+		// field access is permitted here because we're inside the class body.
+		instance.#state = snapshot.state;
+		instance.#previous = snapshot.previous;
+		// Deep-clone so external mutation of `snapshot.context` cannot leak in.
+		instance.context = structuredClone(snapshot.context);
+
+		instance.#logger.debug(
+			`FSM restored from snapshot at state "${instance.#state}" (previous: ${
+				instance.#previous ?? "null"
+			})`
+		);
+
+		return instance;
 	}
 
 	/**

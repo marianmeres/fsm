@@ -19,9 +19,10 @@ src/
 ├── from-mermaid.ts        # Mermaid diagram parser
 └── compose-fsm-config.ts  # Configuration composition helper
 tests/
-├── fsm.test.ts                 # FSM core tests
-├── from-mermaid.test.ts        # Mermaid parser tests
-└── compose-fsm-config.test.ts  # Composition tests
+├── fsm.test.ts                       # FSM core tests
+├── from-mermaid.test.ts              # Mermaid parser tests
+├── compose-fsm-config.test.ts        # Composition tests
+└── fsm-meta-and-snapshot.test.ts     # meta + fromSnapshot tests
 ```
 
 ## Core Concepts
@@ -37,6 +38,7 @@ tests/
     [stateName: string]: {
       onEnter?: (ctx, payload) => void,   // Lifecycle: entering state
       onExit?: (ctx, payload) => void,    // Lifecycle: exiting state
+      meta?: unknown,                     // Arbitrary passthrough; FSM never reads it
       on: {
         [eventName | "*"]: TransitionDef  // Transitions or wildcard
       }
@@ -102,9 +104,12 @@ tests/
 | `is` | `(state) => boolean` | Check current state |
 | `matches` | `(...states) => boolean` | True if FSM is in any of the given states |
 | `getSnapshot` | `() => FSMSnapshot` | Return `{ state, previous, context }` with deep-cloned context |
+| `getStateMeta` | `<T>(state) => T \| undefined` | Read the `meta` value attached to a state config (passthrough; FSM never interprets it) |
+| `getCurrentMeta` | `<T>() => T \| undefined` | Convenience: `meta` of the current state |
 | `reset` | `() => FSM` | Reset to initial state; runs `onExit` on current and `onEnter` on initial |
 | `toMermaid` | `() => string` | Generate Mermaid diagram |
 | `fromMermaid` | `static (diagram) => FSM` | Parse Mermaid to FSM |
+| `fromSnapshot` | `static (config, snapshot) => FSM` | Construct an FSM pre-positioned at a previously captured snapshot. Skips `onEnter` for the restored state and preserves `previous`. Validates `snapshot.state` and `snapshot.previous` against `config.states`. Round-trip: `FSM.fromSnapshot(cfg, fsm.getSnapshot()).getSnapshot()` deep-equals `fsm.getSnapshot()` |
 
 ## Transition Lifecycle
 
@@ -134,6 +139,50 @@ RESET:
 
 Hook errors are wrapped with `FSM: <hook> for "<event>" in state "<state>" threw: ...`.
 The original error is preserved as the wrapped error's `cause`.
+
+## Per-State `meta` (Passthrough)
+
+Each state config accepts an optional `meta?: unknown` field. The FSM never
+reads, validates, or branches on this value. It is preserved in the deep-frozen
+config and surfaced via `getStateMeta<T>(state)` / `getCurrentMeta<T>()`.
+
+Use this when a layer above the FSM needs to attach domain semantics to states
+(node kinds, handler ids, timeouts, signal matchers, etc.) without polluting
+runtime hooks or context.
+
+`composeFsmConfig` propagates `meta` with last-write-wins semantics: a fragment
+that omits `meta` does not erase a prior fragment's `meta`. This is independent
+of the `transitions` / `hooks` modes.
+
+`getSnapshot()` does **not** include `meta` — `meta` is a config-time concept,
+not a runtime state value.
+
+## Durable Resume (`FSM.fromSnapshot`)
+
+`FSM.fromSnapshot(config, snapshot)` constructs an FSM pre-positioned at a
+previously captured snapshot. Intended for long-lived FSM instances that need
+to resume after a process restart.
+
+Semantics:
+- **No `onEnter` runs** for the restored state (a snapshot represents an
+  already-entered state; re-firing `onEnter` would double-execute side effects).
+- **Subscribers list starts empty.** Subsequent `subscribe()` calls fire
+  immediately with the restored state, as usual.
+- **Validation matches the constructor.** `snapshot.state` and (when non-null)
+  `snapshot.previous` must exist in `config.states` — throws with parity error
+  messages otherwise.
+- **`context` is deep-cloned** so external mutation of `snapshot.context` after
+  the call does not leak into the FSM.
+- **Round-trip property:** `FSM.fromSnapshot(cfg, fsm.getSnapshot()).getSnapshot()`
+  is deep-equal to `fsm.getSnapshot()`.
+
+```typescript
+const snap = fsm.getSnapshot();
+await db.save(id, snap);
+// ... later ...
+const restored = FSM.fromSnapshot(config, await db.load(id));
+restored.transition("next"); // continues exactly where it left off
+```
 
 ## Context Best Practices
 

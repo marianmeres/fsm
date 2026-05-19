@@ -657,6 +657,79 @@ const config = composeFsmConfig([
 ]);
 ```
 
+## Per-state Metadata
+
+Each state config accepts an optional `meta?: unknown` field — an arbitrary
+passthrough slot for domain semantics that the FSM itself does not interpret.
+Useful when a layer above the FSM (e.g. a workflow framework) needs to attach
+information like "what kind of node is this", "which handler resolves it", or
+"what's the timeout", without polluting `onEnter` / context.
+
+```typescript
+type NodeMeta = { kind: "decision" | "effectful" | "terminal"; handler?: string };
+
+const fsm = new FSM<"check_stock" | "place_order" | "done", "low" | "ok">({
+    initial: "check_stock",
+    states: {
+        check_stock: {
+            meta: { kind: "effectful", handler: "checkInventory" } satisfies NodeMeta,
+            on: { low: "place_order", ok: "done" },
+        },
+        place_order: {
+            meta: { kind: "effectful", handler: "submitOrder" } satisfies NodeMeta,
+            on: { ok: "done" },
+        },
+        done: { meta: { kind: "terminal" } satisfies NodeMeta, on: {} },
+    },
+});
+
+fsm.getCurrentMeta<NodeMeta>(); // { kind: "effectful", handler: "checkInventory" }
+fsm.getStateMeta<NodeMeta>("done"); // { kind: "terminal" }
+```
+
+The FSM never reads `meta`. It is preserved in the (deep-frozen) config and
+propagated through `composeFsmConfig` with last-write-wins semantics — a
+fragment that omits `meta` does not erase a prior fragment's `meta`.
+
+`getSnapshot()` does **not** include `meta` — it is a config-time concept.
+
+## Persistence / Durable Resume
+
+`getSnapshot()` captures the runtime state of an FSM as
+`{ state, previous, context }`. To resume an FSM at a saved snapshot — for
+example, in a long-lived workflow that survives process restarts — use
+`FSM.fromSnapshot(config, snapshot)`:
+
+```typescript
+// Persist
+const snap = fsm.getSnapshot();
+await db.save(id, snap);
+
+// ... later, possibly a different process ...
+
+// Resume
+const saved = await db.load(id);
+const restored = FSM.fromSnapshot(config, saved);
+restored.transition("next"); // continues exactly where it left off
+```
+
+Semantics:
+
+- **No `onEnter` runs** for the restored state — a snapshot represents an
+  already-entered state; re-running `onEnter` would double-execute side effects.
+  The `onEnter` of that state already fired in the process that wrote the snapshot.
+- **`previous` is preserved.** This is the key difference from
+  `new FSM({ ...config, initial: snapshot.state })`, which would lose `previous`
+  and fire `onEnter` (no, the constructor does not fire `onEnter` — but it
+  cannot set `previous` either).
+- **Validation matches the constructor.** Unknown `snapshot.state` or non-null
+  `snapshot.previous` throws with parity error messages.
+- **`context` is deep-cloned** so external mutation of `snapshot.context` after
+  the call does not leak into the FSM.
+- **Round-trip property:** for any FSM `f`,
+  `FSM.fromSnapshot(f.config, f.getSnapshot()).getSnapshot()` deep-equals
+  `f.getSnapshot()`.
+
 ## API Reference
 
 For complete API documentation including all types, methods, and detailed parameter descriptions, see [API.md](API.md).

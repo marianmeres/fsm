@@ -305,6 +305,41 @@ const snap = fsm.getSnapshot();
 localStorage.setItem("fsm", JSON.stringify(snap));
 ```
 
+Note: `getSnapshot()` does NOT include `meta`. `meta` is a config-time concept
+read via `getStateMeta()` / `getCurrentMeta()`, not a runtime state value.
+
+---
+
+#### `getStateMeta()`
+
+```typescript
+getStateMeta<T = unknown>(state: TState): T | undefined
+```
+
+Returns the `meta` value attached to the given state's config, or `undefined`
+if the state has no `meta` or the state name is not present in the config.
+
+The FSM never reads or interprets this value internally — it is a pure
+passthrough for consumers (e.g. workflow frameworks) that want to attach domain
+semantics to states.
+
+**Example:**
+```typescript
+type NodeMeta = { kind: "decision" | "effectful" | "terminal"; handler?: string };
+fsm.getStateMeta<NodeMeta>("await_reply"); // { kind: "suspending", ... } | undefined
+```
+
+---
+
+#### `getCurrentMeta()`
+
+```typescript
+getCurrentMeta<T = unknown>(): T | undefined
+```
+
+Convenience accessor — returns `meta` for the current state. Equivalent to
+`getStateMeta(this.state)`.
+
 ---
 
 #### `reset()`
@@ -408,6 +443,59 @@ const fsm = FSM.fromMermaid<"IDLE" | "ACTIVE", "start" | "stop">(`
   IDLE --> ACTIVE: start
   ACTIVE --> IDLE: stop
 `);
+```
+
+---
+
+### `FSM.fromSnapshot()`
+
+```typescript
+static fromSnapshot<TState, TEvent, TContext>(
+  config: FSMConfig<TState, TEvent, TContext>,
+  snapshot: FSMSnapshot<TState, TContext>
+): FSM<TState, TEvent, TContext>
+```
+
+Constructs an FSM pre-positioned at a previously captured snapshot. Intended
+for durable / long-lived FSM instances that need to resume after process
+restart.
+
+**Semantics:**
+- **No `onEnter` runs** for the restored state — a snapshot represents an
+  already-entered state, so re-running `onEnter` would double-execute side
+  effects. The `onEnter` of that state already fired in the process that
+  wrote the snapshot.
+- **Subscribers list starts empty** (snapshots don't carry subscribers).
+  Subsequent `subscribe()` calls fire immediately with the restored state.
+- **Validation matches the constructor.** Throws if `snapshot.state` is not
+  in `config.states`, or if `snapshot.previous` is non-null and not in
+  `config.states`. Error wording mirrors the constructor's `initial`
+  validation.
+- **`context` is deep-cloned** so external mutation of `snapshot.context`
+  after the call does not leak into the FSM.
+- **Round-trip property:** for any FSM `f`,
+  `FSM.fromSnapshot(f.config, f.getSnapshot()).getSnapshot()` is deep-equal
+  to `f.getSnapshot()`.
+
+**Why not `new FSM({ ...config, initial: snapshot.state })`?** That approach
+loses `previous` and forces the caller to mutate `context` post-construction.
+`FSM.fromSnapshot` makes the durable-resume case first-class.
+
+**Throws:**
+- `FSM: snapshot state "X" is not defined in states` — unknown `snapshot.state`
+- `FSM: snapshot previous "Y" is not defined in states` — non-null unknown `snapshot.previous`
+- Any error the constructor would raise for an invalid `config`
+
+**Example:**
+```typescript
+const snap = fsm.getSnapshot();
+await db.save(id, snap);
+
+// ... later, possibly in a new process ...
+
+const saved = await db.load(id);
+const restored = FSM.fromSnapshot(config, saved);
+restored.transition("next"); // continues exactly where it left off
 ```
 
 ---
@@ -720,6 +808,12 @@ type FSMStatesConfigValue<TState, TEvent, TContext> = {
   onEnter?: (context: TContext, payload?: FSMPayload) => void;
   on: Partial<Record<TEvent | "*", TransitionDef<TState, TContext>>>;
   onExit?: (context: TContext, payload?: FSMPayload) => void;
+  /**
+   * Arbitrary user-defined metadata about this state. The FSM never reads,
+   * interprets, or branches on this value — it is preserved in the (deep-frozen)
+   * config and exposed via `getStateMeta()` / `getCurrentMeta()`.
+   */
+  meta?: unknown;
 };
 ```
 
